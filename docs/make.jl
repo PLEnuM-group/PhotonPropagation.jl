@@ -6,11 +6,11 @@ DocMeta.setdocmeta!(PhotonPropagation, :DocTestSetup, :(using PhotonPropagation)
 makedocs(;
     modules=[PhotonPropagation],
     authors="Christian Haack",
-    repo="https://github.com/chrhck/PhotonPropagation.jl/blob/{commit}{path}#{line}",
+    repo="https://github.com/PLEnuM-group/PhotonPropagation.jl/blob/{commit}{path}#{line}",
     sitename="PhotonPropagation.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://chrhck.github.io/PhotonPropagation.jl",
+        canonical="https://PLEnuM-group.github.io/PhotonPropagation.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -20,6 +20,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/chrhck/PhotonPropagation.jl",
+    repo="github.com/PLEnuM-group/PhotonPropagation.jl",
     devbranch="main",
 )

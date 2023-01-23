@@ -4,7 +4,7 @@ CurrentModule = PhotonPropagation
 
 # PhotonPropagation
 
-Documentation for [PhotonPropagation](https://github.com/chrhck/PhotonPropagation.jl).
+Documentation for [PhotonPropagation](https://github.com/PLEnuM-group/PhotonPropagation.jl).
 
 ```@index
 ```

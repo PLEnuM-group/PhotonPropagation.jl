@@ -404,7 +404,7 @@ struct AbsLengthStrawFromFit
 end
 
 const ABSLENGTHSTRAWFIT = AbsLengthStrawFromFit(
-    DataFrame(read_parquet(joinpath(@__DIR__, "../../assets/attenuation_length_straw_fit.parquet"))))
+    DataFrame(read_parquet(joinpath(@__DIR__, "../assets/attenuation_length_straw_fit.parquet"))))
 
 function (f::AbsLengthStrawFromFit)(wavelength::Real)
     T = typeof(wavelength)

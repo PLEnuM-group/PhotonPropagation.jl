@@ -16,24 +16,20 @@ export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackE
 export cherenkov_ang_dist, cherenkov_ang_dist_int
 export split_source, oversample_source
 
-using Parameters: @with_kw
+import Base: @kwdef
 using SpecialFunctions: gamma
 using StaticArrays
-using QuadGK
-using Sobol
-using Zygote
 using PhysicalConstants.CODATA2018
 using Unitful
 using PoissonRandom
 using Interpolations
 using PoissonRandom
 using JSON
-using ForwardDiff
+using PhysicsTools
 
 using ..Spectral
 using ..Medium
-using ...Utils
-using ...Types
+
 
 
 c_vac_m_p_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
@@ -127,7 +123,7 @@ end
 cherenkov_ang_dist_int = interp_ch_ang_dist_int()
 
 
-@with_kw struct LongitudinalParameters
+@kwdef struct LongitudinalParameters
     alpha::Float64
     beta::Float64
     b::Float64
@@ -137,7 +133,7 @@ const LongitudinalParametersEMinus = LongitudinalParameters(alpha=2.01849, beta=
 const LongitudinalParametersEPlus = LongitudinalParameters(alpha=2.00035, beta=1.45501, b=0.63008)
 const LongitudinalParametersGamma = LongitudinalParameters(alpha=2.83923, beta=1.34031, b=0.64526)
 
-@with_kw struct LongitudinalParameterisation{T<:Real}
+@kwdef struct LongitudinalParameterisation{T<:Real}
     a::T
     b::T
     lrad::T
@@ -160,7 +156,7 @@ LongitudinalParameterisation(energy::T, medium::MediumProperties, ::Type{ptype})
 
 
 
-@with_kw struct CherenkovTrackLengthParameters
+@kwdef struct CherenkovTrackLengthParameters
     alpha::Float64 # cm
     beta::Float64
     alpha_dev::Float64 # cm
@@ -188,7 +184,7 @@ const CherenkovTrackLengthParametersGamma = CherenkovTrackLengthParameters(
     beta_dev=5.66586567
 )
 
-@with_kw struct LightyieldParametrisation
+@kwdef struct LightyieldParametrisation
     longitudinal::LongitudinalParameters
     track_length::CherenkovTrackLengthParameters
 end
@@ -285,7 +281,7 @@ end
 function fractional_contrib_long!(
     z_grid::AbstractVector{T},
     long_param::LongitudinalParameterisation,
-    output::Union{Zygote.Buffer,AbstractVector{T}}
+    output::AbstractVector{T}
 ) where {T<:Real}
     if length(z_grid) != length(output)
         error("Grid and output are not of the same length")
@@ -307,7 +303,7 @@ function fractional_contrib_long!(
     z_grid::AbstractVector{T},
     medium::MediumProperties,
     long_pars::LongitudinalParameters,
-    output::Union{Zygote.Buffer,AbstractVector{T}}
+    output::AbstractVector{T}
 ) where {T<:Real}
 
     long_param = LongitudinalParameterisation(energy, medium, long_pars)
