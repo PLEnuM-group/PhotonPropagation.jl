@@ -10,5 +10,5 @@ Documentation for [PhotonPropagation](https://github.com/PLEnuM-group/PhotonProp
 ```
 
 ```@autodocs
-Modules = [PhotonPropagation, PhotonPropagation.Medium, PhotonPropagation.Spectral, PhotonPropagation.LightYield, PhotonPropagation.Detection, PhotonPropagation.PhotonPropagationCuda]
+Modules = [PhotonPropagation, PhotonPropagation.Medium, PhotonPropagation.Spectral, PhotonPropagation.Detection, PhotonPropagation.PhotonPropagationCuda, PhotonPropagation.LightYield]
 ```

@@ -23,8 +23,6 @@ struct Monochromatic{T} <: Spectrum
     wavelength::T
 end
 
-
-
 """
     frank_tamm(wavelength::Real, ref_index::T) where {T<:Real}
 
@@ -61,7 +59,7 @@ function frank_tamm_inverted_cdf(wl_range::Tuple{T,T}, medium::MediumProperties,
 
     full_norm = frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium))
 
-    for i in 2:size(wl_steps, 1)
+    for i in eachindex(wl_steps)[2:end]
         step = wl_steps[i]
         norms[i] = frank_tamm_norm((wl_range[1], step), wl -> refractive_index(wl, medium)) / full_norm
     end
@@ -95,7 +93,7 @@ struct CherenkovSpectrum{T<:Real,A} <: Spectrum
         new{T,A}(wl_range, texture)
     end
 
-    function CherenkovSpectrum(wl_range::Tuple{T,T}, interp_steps::Integer, medium::MediumProperties) where {T<:Real}
+    function CherenkovSpectrum(wl_range::Tuple{T,T}, medium::MediumProperties, interp_steps::Integer=30) where {T<:Real}
         spec = CherenkovSpectralDist(wl_range, medium)
         eval_knots = range(T(0), T(1), interp_steps)
         knots = spec.interpolation(eval_knots)

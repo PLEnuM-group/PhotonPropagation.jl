@@ -34,7 +34,15 @@ struct DetectionSphere{T<:Real} <: PhotonTarget
     pmt_area::T
     module_id::UInt16
 end
+
 geometry_type(::Type{<:DetectionSphere}) = Spherical()
+
+function Base.convert(::Type{DetectionSphere{T}}, x::DetectionSphere) where {T}
+    pos = T.(x.position)
+    radius = T.(x.radius)
+    pmt_area = T(x.pmt_area)
+    return DetectionSphere(pos, radius, x.n_pmts, pmt_area, x.module_id)
+end
 
 
 struct MultiPMTDetector{T<:Real,N,L} <: PixelatedTarget
@@ -45,6 +53,15 @@ struct MultiPMTDetector{T<:Real,N,L} <: PixelatedTarget
     module_id::UInt16
 end
 geometry_type(::Type{<:MultiPMTDetector}) = Spherical()
+
+function Base.convert(::Type{MultiPMTDetector{T, N, L}}, x::MultiPMTDetector) where {T,N,L}
+    pos = T.(x.position)
+    radius = T.(x.radius)
+    pmt_area = T(x.pmt_area)
+    pmt_coordinates = SMatrix{2, N, T, L}(x.pmt_coordinates)
+    return MultiPMTDetector(pos, radius, pmt_area, pmt_coordinates, x.module_id)
+end
+
 
 
 # Assumes rectangle orientation is e_z
