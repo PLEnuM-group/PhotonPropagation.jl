@@ -671,7 +671,7 @@ function propagate_photons(setup::PhotonPropSetup)
 
     df = DataFrame(hits)
 
-    df[!, :base_weight] = n_ph_sim / sum([source.photons for source in setup.sources])
+    df[!, :base_weight] .= n_ph_sim / sum([source.photons for source in setup.sources])
 
     return df
 end
