@@ -32,6 +32,7 @@ TerminalLoggers = "5d786b92-1e48-4d6f-9151-6b4477ca9bed"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
+Rotations = "1"
 julia = "1.9"
 
 [extras]
