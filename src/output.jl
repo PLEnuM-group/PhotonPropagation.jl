@@ -1,39 +1,17 @@
 
 module Output
 using DataFrame
-using Tables
+using HDF5
+
 export hist_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe
 
+#=
+HDF File Structure
 
-HitsSchema = Schema(
-    [:time, :pmt_id, :module_id],
-    [Float64, Int64, Int64]
-)
-
-@enum SourceType begin
-    ExtendedCherenkovEmitter=0
-    PointLikeCherenkovEmitter=1
-    BareInfiniteMuon=2
-    Bioluminescence=3
-end
-    
-
-SourceSchema = Schema(
-    [:location_x, :location_y, :location_z,
-    :orientation_x, :orientation_y, :orientation_z,
-    :number_of_photons, :time, :type, :source_id
-    ],
-    [Float64, Float64, Float64,
-     Float64, Float64, Float64,
-     Int64, Float64, SourceType, Int64
-    ]
-)
-
-EventRecordSchema = Schema(
-    [:sources_id, ]
-)
-
-
+/hits/record_id/[HitsSchema]
+/records/record_id/[RecordSchema]
+/photon_sources/record_id/source_id/[SourceSchema]
+=#
 
 
 function hist_list_to_dataframe(hit_list, targets, target_mask)
@@ -52,7 +30,6 @@ function hist_list_to_dataframe(hit_list, targets, target_mask)
 
 end
 
-
 function targets_to_dataframe(targets)
 
     targets_nt = []
@@ -65,8 +42,8 @@ function targets_to_dataframe(targets)
                 module_x=target.position[1],
                 module_y=target.position[2],
                 module_z=target.position[3],
-                pmt_theta = pmt_coords[1],
-                pmt_phi = pmt_coords[2]
+                pmt_theta=pmt_coords[1],
+                pmt_phi=pmt_coords[2]
             )
             push!(targets_nt, nt)
         end
@@ -90,4 +67,61 @@ function event_info_to_dataframe(particle)
 
     return DataFrame([nt])
 end
+
+
+function source_to_namedtuple(source::ExtendedCherenkovEmitter)
+    tup = (
+        location_x=source.position[1],
+        location_y=source.position[2],
+        location_z=source.position[3],
+        direction_x=source.direction[1],
+        direction_y=source.direction[2],
+        direction_z=source.direction[3],
+        time=source.time,
+        n_photons=source.photons
+    )
+    return tup
+end
+
+
+function _create_or_read_group(fid, name)
+    if not haskey(fid, name)
+        return create_group(fid, name)
+    end
+    return fid[name]
+end
+
+function save_event(path, event_record)
+    event_id = string(event_record[:event_id])
+    h5open(path, "cw") do fid
+        ghits = _create_or_read_group(fid, "hits")
+        ghits[event_id] = event_record[:hits]
+
+        gsources = _create_or_read_group(fid, "sources")
+        gsources_ev = create_group(gsources, event_id)
+
+        source_type_dict = Dict()
+        for source in event_record[:sources]
+            stype = typeof(source)
+            if !haskey(source_type_dict, stype)
+                source_type_dict[stype], = []
+            end
+            push!(source_type_dict[stype], source)
+        end
+
+        for (source_type, sources) in source_type_dict
+
+            sources_df = source_to_namedtuple.(sources)
+
+            gsources_ev[string(source_type)] = source
+            attribute(gsources_ev[string(source_id)])["source_type"] =
+
+        end
+
+
+    end
+
+
+
+
 end
