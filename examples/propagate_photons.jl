@@ -1,7 +1,7 @@
 using PhotonPropagation
 using StaticArrays
 using PhysicsTools
-
+using UUIDs
 # Setup target
 target = DetectionSphere(
     SA[0., 0., 10.],
@@ -31,7 +31,7 @@ seed = 1
 setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 
 # Run propagation
-hits = propagate_photons(setup)
+photons = propagate_photons(setup)
 
 
 # Propagate photons from an EM Cascade
@@ -45,4 +45,21 @@ source = ExtendedCherenkovEmitter(p, medium, wl_range)
 
 spectrum = CherenkovSpectrum(wl_range, medium)
 setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
-hits = propagate_photons(setup)
+photons = propagate_photons(setup)
+
+
+
+# Save output
+#=
+hits = make_hits_from_photons(photons, setup)
+event_record = Dict(:hits=>hits, :sources=>[source], :event_id=>uuid4())
+
+using HDF5
+
+fid = h5open("test.hd5", "w")
+
+fid["test"] = hits[:, [:time]]
+
+
+save_event("test.hd5", event_record)
+=#

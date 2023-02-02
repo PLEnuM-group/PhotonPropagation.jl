@@ -698,7 +698,7 @@ end
 function make_hits_from_photons(
     df::AbstractDataFrame,
     setup::PhotonPropSetup,
-    target_orientation::AbstractMatrix{<:Real})
+    target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
 
     targ_id_map = Dict([target.module_id => target for target in setup.targets])
 

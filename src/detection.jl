@@ -127,7 +127,7 @@ function check_pmt_hit(
     return 0
 end
 
-check_pmt_hit(::SVector{3,<:Real}, ::DetectionSphere) = 1
+check_pmt_hit(hit_positions::AbstractVector, ::DetectionSphere, ::Rotation) = ones(length(hit_positions))
 
 function check_pmt_hit(
     hit_positions::AbstractVector{T},
