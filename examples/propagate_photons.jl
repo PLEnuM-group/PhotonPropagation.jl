@@ -1,7 +1,8 @@
 using PhotonPropagation
 using StaticArrays
 using PhysicsTools
-using UUIDs
+
+
 # Setup target
 target = DetectionSphere(
     SA[0., 0., 10.],
