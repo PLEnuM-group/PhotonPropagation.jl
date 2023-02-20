@@ -681,6 +681,10 @@ function calc_total_weight!(df::AbstractDataFrame, setup::PhotonPropSetup)
 
     targ_id_map = Dict([target.module_id => target for target in setup.targets])
 
+    if nrow(df) == 0
+        return df
+    end
+
     for (key, subdf) in pairs(groupby(df, :module_id))
         target = targ_id_map[key.module_id]
         subdf[!, :area_acc] = area_acceptance.(subdf[:, :position], Ref(target))
