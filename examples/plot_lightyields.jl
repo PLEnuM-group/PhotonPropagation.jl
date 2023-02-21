@@ -1,10 +1,10 @@
 using CairoMakie
-using NeutrinoTelescopes
+using PhotonPropagation
 using StaticArrays
 using CSV
 using DataFrames
 
-log_energies = 2:0.1:8
+log_energies = 2:0.1:10
 zs = (0:0.1:20.0)# m
 medium = make_cascadia_medium_properties(0.99)
 wls = 200:1.0:800
@@ -43,14 +43,18 @@ plot(zs, frac_contrib .* light_yield, linetype=:steppost, label="", ylabel="Ligh
 
 # Calculate Cherenkov track length as function of energy
 tlens = cascade_cherenkov_track_length.((10 .^ log_energies), PEMinus)
-plot(log_energies, tlens, yscale=:log10, xlabel="Log10(E/GeV)", ylabel="Cherenkov track length")
+lines(log_energies, tlens,
+    axis=(; yscale=log10, xlabel="Log10(E/GeV)", ylabel="Cherenkov track length"))
 
 total_lys = frank_tamm_norm((200.0, 800.0), wl -> refractive_index(wl, medium)) * tlens
 
-p = plot(log_energies, total_lys, yscale=:log10, ylabel="Number of photons", xlabel="log10(Energy/GeV)",
+p = lines(log_energies, total_lys,
+    axis=(; yscale=log10, ylabel="Number of photons", xlabel="log10(Energy/GeV)",),
     label="", dpi=150)
 savefig(p, joinpath(@__DIR__, "../figures/photons_per_energy.png"))
 
+
+#cascade_cherenkov_track_length(1E9, PEMinus)  / cascade_cherenkov_track_length(1E5, PEMinus) 
 
 # Calculate light yield for muons
 
