@@ -49,12 +49,12 @@ lines(log_energies, tlens,
 total_lys = frank_tamm_norm((200.0, 800.0), wl -> refractive_index(wl, medium)) * tlens
 
 p = lines(log_energies, total_lys,
-    axis=(; yscale=log10, ylabel="Number of photons", xlabel="log10(Energy/GeV)",),
+    axis=(; yscale=log10, ylabel="Number of photons", xlabel="log10(Energy/GeV)"),
     label="", dpi=150)
 savefig(p, joinpath(@__DIR__, "../figures/photons_per_energy.png"))
 
 
-#cascade_cherenkov_track_length(1E9, PEMinus)  / cascade_cherenkov_track_length(1E5, PEMinus) 
+#cascade_cherenkov_track_length(1E9, PEMinus)  / cascade_cherenkov_track_length(1E5, PEMinus)
 
 # Calculate light yield for muons
 
@@ -72,7 +72,7 @@ total_lys_simple = frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium))
 
 fig = Figure()
 ax = Axis(fig[1, 1], xlabel="log10(E/GeV)", ylabel="Ratio")
-lines!(ax, log_energies, total_lys ./ total_lys_simple)
+lines!(ax, log_energies, total_lys)
 #hlines!(total_lys_single, color=:red)
 fig
 
