@@ -2,7 +2,9 @@
 module Output
 using DataFrames
 using HDF5
+using Base.Iterators
 using ..LightYield
+using ..Detection
 export hist_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple
 export save_event
 
