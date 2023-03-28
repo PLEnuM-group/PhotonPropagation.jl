@@ -32,6 +32,10 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - run: |
+          using Pkg
+          pkg"registry add https://github.com/PLEnuM-group/julia-registry"
+        shell: julia --color=yes {0}    
       - uses: julia-actions/cache@v1
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
@@ -50,6 +54,10 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1'
+      - run: |
+          using Pkg
+          pkg"registry add https://github.com/PLEnuM-group/julia-registry"
+        shell: julia --color=yes {0}    
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-docdeploy@v1
         env:
