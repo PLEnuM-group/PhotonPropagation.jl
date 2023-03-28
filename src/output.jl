@@ -5,7 +5,7 @@ using HDF5
 using Base.Iterators
 using ..LightYield
 using ..Detection
-export hist_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple
+export hit_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple
 export save_event
 
 #=
@@ -17,7 +17,7 @@ HDF File Structure
 =#
 
 
-function hist_list_to_dataframe(hit_list, targets, target_mask)
+function hit_list_to_dataframe(hit_list, targets, target_mask)
     hits_nt = []
     n_pmt = get_pmt_count(eltype(targets))
     pmt_target_prod = product(1:n_pmt, targets[target_mask])
