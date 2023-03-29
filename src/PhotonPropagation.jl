@@ -6,6 +6,7 @@ include("lightyield.jl")
 
 include("detection.jl")
 include("photon_prop_cuda.jl")
+include("output.jl")
 
 using Reexport
 
@@ -14,5 +15,6 @@ using Reexport
 @reexport using .LightYield
 @reexport using .Detection
 @reexport using .PhotonPropagationCuda
+@reexport using .Output
 
 end
