@@ -34,7 +34,7 @@ jobs:
           arch: ${{ matrix.arch }}
       - run: |
           using Pkg
-          Pkg.Registry.add("https://github.com/PLEnuM-group/julia-registry")
+          Pkg.Registry.add("https://github.com/PLEnuM-group/julia-registry.git")
           Pkg.Registry.update()
         shell: julia --color=yes {0}    
       - uses: julia-actions/cache@v1
@@ -57,7 +57,7 @@ jobs:
           version: '1'
       - run: |
           using Pkg
-          Pkg.Registry.add("https://github.com/PLEnuM-group/julia-registry")
+          Pkg.Registry.add("https://github.com/PLEnuM-group/julia-registry.git")
           Pkg.Registry.update()
         shell: julia --color=yes {0}    
       - uses: julia-actions/julia-buildpkg@v1
