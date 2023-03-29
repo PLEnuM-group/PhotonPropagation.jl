@@ -84,7 +84,8 @@ JSON.lower(d::MultiPMTDetector) = Dict(
     "pos" => d.position,
     "radius" => d.radius,
     "pmt_area" => d.pmt_area,
-    "pmt_coordinates" => d.pmt_coordinates)
+    "pmt_coordinates" => d.pmt_coordinates,
+    "module_id" => Int(d.module_id))
 
 get_pmt_count(::DetectionSphere) = 1
 get_pmt_count(::MultiPMTDetector{T,N,L}) where {T,N,L} = N
@@ -127,7 +128,7 @@ function check_pmt_hit(
     return 0
 end
 
-check_pmt_hit(::SVector{3,<:Real}, ::DetectionSphere) = 1
+check_pmt_hit(hit_positions::AbstractVector, ::DetectionSphere, ::Rotation) = ones(length(hit_positions))
 
 function check_pmt_hit(
     hit_positions::AbstractVector{T},

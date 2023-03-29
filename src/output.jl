@@ -1,9 +1,12 @@
 
 module Output
-using DataFrame
+using DataFrames
 using HDF5
-
-export hist_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe
+using Base.Iterators
+using ..LightYield
+using ..Detection
+export hit_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple
+export save_event
 
 #=
 HDF File Structure
@@ -14,7 +17,7 @@ HDF File Structure
 =#
 
 
-function hist_list_to_dataframe(hit_list, targets, target_mask)
+function hit_list_to_dataframe(hit_list, targets, target_mask)
     hits_nt = []
     n_pmt = get_pmt_count(eltype(targets))
     pmt_target_prod = product(1:n_pmt, targets[target_mask])
@@ -69,6 +72,7 @@ function event_info_to_dataframe(particle)
 end
 
 
+
 function source_to_namedtuple(source::ExtendedCherenkovEmitter)
     tup = (
         location_x=source.position[1],
@@ -85,7 +89,7 @@ end
 
 
 function _create_or_read_group(fid, name)
-    if not haskey(fid, name)
+    if !haskey(fid, name)
         return create_group(fid, name)
     end
     return fid[name]
@@ -95,7 +99,7 @@ function save_event(path, event_record)
     event_id = string(event_record[:event_id])
     h5open(path, "cw") do fid
         ghits = _create_or_read_group(fid, "hits")
-        ghits[event_id] = event_record[:hits]
+        ghits[event_id] = event_record[:hits][:, [:time, :module_id, :pmt_id]]
 
         gsources = _create_or_read_group(fid, "sources")
         gsources_ev = create_group(gsources, event_id)
@@ -104,24 +108,15 @@ function save_event(path, event_record)
         for source in event_record[:sources]
             stype = typeof(source)
             if !haskey(source_type_dict, stype)
-                source_type_dict[stype], = []
+                source_type_dict[stype] = []
             end
             push!(source_type_dict[stype], source)
         end
 
         for (source_type, sources) in source_type_dict
-
-            sources_df = source_to_namedtuple.(sources)
-
-            gsources_ev[string(source_type)] = source
-            attribute(gsources_ev[string(source_id)])["source_type"] =
-
+            sources_df = DataFrame(source_to_namedtuple.(sources))
+            gsources_ev[string(source_type)] = sources_df
         end
-
-
     end
-
-
-
-
+end
 end
