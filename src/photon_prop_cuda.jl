@@ -72,8 +72,8 @@ CUDA-optimized version of Henyey-Greenstein scattering in one plane.
     """Henyey-Greenstein scattering in one plane."""
     eta = rand(T)
     #costheta::T = (1 / (2 * g) * (1 + g^2 - ((1 - g^2) / (1 + g * (2 * eta - 1)))^2))
-    costheta::T = (1 / (2 * g) * (CUDA.fma(g, g, 1) - (CUDA.fma(-g, g, 1) / (CUDA.fma(g, (CUDA.fma(2, eta, -1)), 1)))^2))
-    CUDA.clamp(costheta, T(-1), T(1))
+    costheta::T = (1 / (2 * g) * (fma(g, g, 1) - (fma(-g, g, 1) / (fma(g, (fma(2, eta, -1)), 1)))^2))
+    return clamp(costheta, T(-1), T(1))
 end
 
 
@@ -217,7 +217,7 @@ end
 
     # Calculate new direction (relative to e_z)
     cos_sca_theta = cuda_hg_scattering_func(mean_scattering_angle(medium))
-    sin_sca_theta = CUDA.sqrt(CUDA.fma(-cos_sca_theta, cos_sca_theta, 1))
+    sin_sca_theta = sqrt(fma(-cos_sca_theta, cos_sca_theta, 1))
     sca_phi = uniform(T(0), T(2 * pi))
 
     sin_sca_phi, cos_sca_phi = sincos(sca_phi)
@@ -257,7 +257,7 @@ end
     a::T = dot(dir, dpos)
     pp_norm_sq::T = sum(dpos .^ 2)
 
-    b = CUDA.fma(a, a, -pp_norm_sq + target_rsq)
+    b = fma(a, a, -pp_norm_sq + target_rsq)
 
     #b::Float32 = a^2 - (pp_norm_sq - target.radius^2)
 
@@ -392,7 +392,7 @@ function cuda_propagate_photons!(
         for nstep in Int32(1):steps
 
             eta = rand(T)
-            step_size::T = -CUDA.log(eta) * sca_len
+            step_size::T = -log(eta) * sca_len
 
             # Check intersection with module
 
@@ -503,7 +503,7 @@ function cuda_propagate_photons!(
         for nstep in Int32(1):steps
 
             eta = rand(T)
-            step_size::T = -CUDA.log(eta) * sca_len
+            step_size::T = -log(eta) * sca_len
 
             # Check intersection with module
 
