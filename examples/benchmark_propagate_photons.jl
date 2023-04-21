@@ -1,11 +1,10 @@
-using NeutrinoTelescopes
-using Logging
+using PhotonPropagation
 using BenchmarkTools
 using BenchmarkPlots, StatsPlots
 using Plots
 using StaticArrays
 using CUDA
-using StructArrays
+
 
 distance = 30.0f0
 medium = make_cascadia_medium_properties(0.99f0)
