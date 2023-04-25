@@ -709,7 +709,7 @@ function make_hits_from_photons(
     hits = []
     for (key, subdf) in pairs(groupby(df, :module_id))
         target = targ_id_map[key.module_id]
-        pmt_ids = check_pmt_hit(subdf[:, :position], target, target_orientation)
+        pmt_ids = check_pmt_hit(subdf[:, :position], subdf[:, :direction], target, target_orientation)
         mask = pmt_ids .> 0
         h = DataFrame(copy(subdf[mask, :]))
         h[!, :pmt_id] .= pmt_ids[mask]

@@ -14,6 +14,12 @@ using MultivariateStats
 using Glob
 using ProgressLogging
 using BenchmarkTools
+using HDF5
+using JSON3
+
+import PhotonPropagation.Detection: calc_relative_pmt_coords
+
+
 begin
     coords = Matrix{Float64}(undef, 2, 16)
     # upper 
@@ -30,13 +36,22 @@ begin
 
     # lower
     coords[1, 13:16] .= deg2rad(90 + 57.5)
-    coords[2, 13:16] = [π/4, 7/4*π, 5/4*π, 3/4*π] # (range(π / 4; step=π / 2, length=4))
+    coords[2, 13:16] = [π/4, 7/4*π, 5/4*π, 3/4*π]
+   
+    #=
+    R = calc_rot_matrix(SA[0.0, 0.0, 1.0], SA[1.0, 0.0, 0.0])
+    
+    @views for col in eachcol(coords)
+        cart = sph_to_cart(col[1], col[2])
+        col[:] .= cart_to_sph((R * cart)...)
+    end
+    =#
+
 end
 
 
-
-function calc_relative_pmt_coords(df, pmt_coords)
-    pmt_vec = sph_to_cart(pmt_coords[1], pmt_coords[2])
+#=
+function calc_relative_pmt_coords(df, pmt_vec)
 
     # Rotate pmt to e_z
     R = calc_rot_matrix(pmt_vec, [0, 0, 1])
@@ -58,7 +73,7 @@ function calc_relative_pmt_coords(df, pmt_coords)
     return reduce(hcat, glass_pos_rot_sph), reduce(hcat, in_dir_rot_rel_ez_sph)
 
 end
-
+=#
 function proc_df!(df, h_all, h_hit)
        
     pos_glas = Matrix(df[:, ["1_x", "1_y", "1_z"]])
@@ -71,7 +86,10 @@ function proc_df!(df, h_all, h_hit)
     df[!, :glass_norm_y] .= pos_glas_normed[:, 2]
     df[!, :glass_norm_z] .= pos_glas_normed[:, 3]
 
-    
+    in_dir = Matrix(df[:, [:in_px, :in_py, :in_pz]])
+    in_pos = Matrix(df[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]])
+
+    all_pos_dir_hit = []
     for (pmt_ix, pmt_coords_sph) in enumerate(eachcol(coords))
         copy_no = pmt_ix - 1
 
@@ -82,47 +100,110 @@ function proc_df!(df, h_all, h_hit)
             df[:, :out_Volume_CopyNo] .== copy_no
             )
 
-        pos_dir = vcat(calc_relative_pmt_coords(df, pmt_vec)...)
+       
+        pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, in_pos, in_dir)...)
         pos_dir_hit = pos_dir[:, sel]
-        h_all_i = fit(Histogram, (cos.(pos_dir[1, :]), cos.(pos_dir[3, :]), pos_dir[4, :]), (bins_costheta, bins_costheta, bins_phi))
-        h_hit_i = fit(Histogram, (cos.(pos_dir_hit[1, :]), cos.(pos_dir_hit[3, :]), pos_dir_hit[4, :]), (bins_costheta, bins_costheta, bins_phi))
+        h_all_i = fit(Histogram, ((pos_dir[1, :]), (pos_dir[3, :]), pos_dir[4, :]), (bins_pos_theta, bins_dir_theta, bins_phi))
+        h_hit_i = fit(Histogram, ((pos_dir_hit[1, :]), (pos_dir_hit[3, :]), pos_dir_hit[4, :]), (bins_pos_theta, bins_dir_theta, bins_phi))
 
         merge!(h_all, h_all_i)
         merge!(h_hit, h_hit_i)
-
+        push!(all_pos_dir_hit, pos_dir_hit)
     end
     
+    return reduce(hcat, all_pos_dir_hit)
+
 end
 
 
-bins_costheta = -1:0.05:1
-bins_phi = 0:0.1:π
+bins_pos_theta = 0:0.1:π
+bins_dir_theta = 0:0.1:π
+bins_phi = 0:0.1:2*π
 
-h_all = fit(Histogram, ([], [], []), (bins_costheta, bins_costheta, bins_phi))
-h_hit = fit(Histogram, ([], [], []), (bins_costheta, bins_costheta, bins_phi))
+h_all = fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
+h_hit = fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
 
-files = glob("*.csv", "/home/chrhck/")
+sim_path = joinpath(ENV["WORK"], "geant4_pmt")
+files = glob("*.csv", sim_path)
 
-@progress for f in glob("*.csv", "/home/chrhck/")
+#df_list = []
+@progress for f in files
     df = DataFrame(CSV.File(f))
     proc_df!(df[:, :], h_all, h_hit)
+    #push!(df_list, df)
 end
+#df = reduce(vcat, df_list)
 
 h_ratio = h_hit.weights ./ h_all.weights
 h_ratio[h_all.weights .== 0] .= 0
 
+h_ratio_avg = mean(h_ratio, dims=[1, 3])[:]
 
-heatmap(h_ratio[10, :, :])
+stairs(bins_dir_theta, [h_ratio_avg; h_ratio_avg[end]])
+
+h_ratio
 
 
-function transform_to_tangent(x, theta, phi)
-    A = [sin(theta)*cos(phi) sin(theta)*sin(phi) cos(theta);
-         cos(theta)*cos(phi) cos(theta)*sin(phi) -sin(theta);
-         sin(theta)*sin(phi) sin(theta)*cos(phi) 0]
-    return A*x
+fname = joinpath(@__DIR__, "../assets/pmt_acc_3d.hd5")
+h5open(fname, "w") do fid
+    fid["acceptance"] = h_ratio
+    attrs(fid)["bin_edges_x"] = JSON3.write(bins_pos_theta)
+    attrs(fid)["bin_edges_y"] =  JSON3.write(bins_dir_theta)
+    attrs(fid)["bin_edges_z"] = JSON3.write(bins_phi)
 end
 
+searchsortedlast([1, 2, 3, 4, 5], 6)
 
+h = fit(Histogram, [4.9], 1:5)
+h.weights
+
+searchsortedlast(1:5, 4.9)
+
+prob_vec = zeros(16)
+
+in_pos = sph_to_cart(coords[:, 3])
+in_dir = -sph_to_cart(coords[:, 3])
+
+for (pmt_ix, pmt_coords_sph) in enumerate(eachcol(coords))
+    pmt_vec = sph_to_cart(pmt_coords_sph)
+    pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, in_pos, in_dir)...)
+
+    i = clamp(searchsortedlast(bins_pos_theta, pos_dir[1]), 1, length(bins_pos_theta)-1)
+    j = clamp(searchsortedlast(bins_dir_theta, pos_dir[3]), 1, length(bins_dir_theta)-1)
+    k = clamp(searchsortedlast(bins_phi, pos_dir[4]), 1, length(bins_phi)-1)
+
+    prob_vec[pmt_ix] = h_ratio[i, j, k]
+  
+end
+
+total_prob = sum(prob_vec)
+@show total_prob
+if rand() < total_prob
+    w = ProbabilityWeights(prob_vec, total_prob)
+    @show sample(1:16, w)
+end
+
+@show prob_vec
+
+
+sample()
+rand()
+Multinomial()
+
+
+
+heatmap(h_ratio[end, :, :])
+
+
+df = DataFrame(CSV.File(files[1]))
+pos_dir_hit = proc_df!(df[:, :], h_all, h_hit)
+
+df = DataFrame(pos_dir_hit', [:pos_theta, :pos_phi, :dir_theta, :dir_phi])
+
+pairplot(df)
+
+
+df
 
 all_x = []
 all_sph = []

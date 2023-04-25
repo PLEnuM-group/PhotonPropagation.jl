@@ -11,7 +11,7 @@ using Rotations
 
 using PhysicsTools
 
-export PhotonTarget, DetectionSphere, p_one_pmt_acc, MultiPMTDetector, get_pmt_count
+export PhotonTarget, DetectionSphere, MultiPMTDetector, get_pmt_count
 export geometry_type, Spherical, Rectangular, RectangularDetector, Circular, CircularDetector
 export check_pmt_hit
 export make_detector_cube, make_targets, make_detector_hex
@@ -61,8 +61,6 @@ function Base.convert(::Type{MultiPMTDetector{T, N, L}}, x::MultiPMTDetector) wh
     pmt_coordinates = SMatrix{2, N, T, L}(x.pmt_coordinates)
     return MultiPMTDetector(pos, radius, pmt_area, pmt_coordinates, x.module_id)
 end
-
-
 
 # Assumes rectangle orientation is e_z
 struct RectangularDetector{T<:Real} <: PhotonTarget
@@ -114,7 +112,7 @@ function get_pmt_positions(
     return pmt_positions
 end
 
-function check_pmt_hit(
+function check_pmt_hit_opening_angle(
     rel_hit_position::SVector{3,<:Real},
     pmt_positions::AbstractVector{T},
     opening_angle::Real
@@ -128,10 +126,11 @@ function check_pmt_hit(
     return 0
 end
 
-check_pmt_hit(hit_positions::AbstractVector, ::DetectionSphere, ::Rotation) = ones(length(hit_positions))
+check_pmt_hit(hit_positions::AbstractVector, ::AbstractVector, ::DetectionSphere, ::Rotation) = ones(length(hit_positions))
 
 function check_pmt_hit(
     hit_positions::AbstractVector{T},
+    ::AbstractVector,
     target::PixelatedTarget,
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
 
@@ -142,7 +141,7 @@ function check_pmt_hit(
     tpos = convert(SVector{3,Float64}, target.position)
     rel_pos = hit_positions .- Ref(tpos)
     rel_pos = rel_pos ./ norm.(rel_pos)
-    pmt_hit_ids = check_pmt_hit.(rel_pos, Ref(pmt_positions), Ref(opening_angle))
+    pmt_hit_ids = check_pmt_hit_opening_angle.(rel_pos, Ref(pmt_positions), Ref(opening_angle))
 
     return pmt_hit_ids
 
@@ -172,7 +171,8 @@ end
 (f::PMTWavelengthAcceptance)(wavelength::Unitful.Length) = f.interpolation(ustrip(u"nm", wavelength))
 
 
-df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv",), DataFrame, header=["wavelength", "acceptance"])
+abstract type PositionalAcceptance end
 
-p_one_pmt_acc = PMTWavelengthAcceptance(df[:, :wavelength], df[:, :acceptance])
+include("pom.jl")
+
 end

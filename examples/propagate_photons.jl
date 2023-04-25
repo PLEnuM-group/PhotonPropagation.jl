@@ -48,8 +48,7 @@ source = ExtendedCherenkovEmitter(p, medium, wl_range)
 spectrum = CherenkovSpectrum(wl_range, medium)
 setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 photons = propagate_photons(setup)
-
-CUDA.@profile propagate_photons(setup)
+propagate_photons(setup)
 
 
 

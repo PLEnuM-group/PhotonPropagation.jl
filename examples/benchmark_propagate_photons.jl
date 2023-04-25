@@ -17,12 +17,13 @@ n_photons = exp10.(5:0.5:10)
 
 target = DetectionSphere(@SVector[0.0f0, 0f0, distance], target_radius, n_pmts, pmt_area, UInt16(1))
 
-spectrum = CherenkovSpectrum((300.0f0, 800.0f0), 30, medium)
+spectrum = CherenkovSpectrum((300.0f0, 800.0f0), medium)
 
 suite = BenchmarkGroup()
 for nph in n_photons
     source = PointlikeIsotropicEmitter(SA[0.0f0, 0.0f0, 0.0f0], 0.0f0, Int64(ceil(nph)))
-    suite[nph] = CUDA.@sync @benchmarkable $propagate_photons($source, $target, $medium, $spectrum)
+    setup = PhotonPropSetup([source], [target], medium, spectrum, 1)
+    suite[nph] = CUDA.@sync @benchmarkable $propagate_photons($setup)
 end
 
 tune!(suite)
@@ -37,4 +38,10 @@ p = scatter(collect(keys(medr)), getproperty.(values(medr), (:time,)) ./ (keys(m
     xlabel="Number of Photons", ylabel="Time per Photon (ns)",
     label="", dpi=150, title=CUDA.name(CUDA.device()))
 
-savefig(p, joinpath(@__DIR__, "../figures/photon_benchmark.png"),)
+figpath =  joinpath(@__DIR__, "../figures/")
+
+if !ispath(figpath)
+    mkdir(figpath)
+end
+
+savefig(p, joinpath(figpath, "photon_benchmark.png"))
