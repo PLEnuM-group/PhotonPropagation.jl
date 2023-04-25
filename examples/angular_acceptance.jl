@@ -16,9 +16,7 @@ using ProgressLogging
 using BenchmarkTools
 using HDF5
 using JSON3
-
 import PhotonPropagation.Detection: calc_relative_pmt_coords
-
 
 begin
     coords = Matrix{Float64}(undef, 2, 16)
@@ -50,30 +48,6 @@ begin
 end
 
 
-#=
-function calc_relative_pmt_coords(df, pmt_vec)
-
-    # Rotate pmt to e_z
-    R = calc_rot_matrix(pmt_vec, [0, 0, 1])
-
-    in_dir_rot = [R * v for v in eachrow(Matrix(df[:, [:in_px, :in_py, :in_pz]]))]
-    glass_pos_rot = [R * v for v in eachrow(Matrix(df[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]]))]
-    
-    glass_pos_rot_sph = cart_to_sph.(glass_pos_rot)
-    
-
-    # Calculate phi direction relative to glass position 
-    # by rotating around e_z
-    phi = [cart_to_cyl(x)[2] for x in glass_pos_rot]
-    Rs = AngleAxis.(-phi, 0, 0, 1)
-
-    in_dir_rot_rel_ez = Rs .* in_dir_rot
-    in_dir_rot_rel_ez_sph = cart_to_sph.(in_dir_rot_rel_ez)
-    
-    return reduce(hcat, glass_pos_rot_sph), reduce(hcat, in_dir_rot_rel_ez_sph)
-
-end
-=#
 function proc_df!(df, h_all, h_hit)
        
     pos_glas = Matrix(df[:, ["1_x", "1_y", "1_z"]])
@@ -148,225 +122,78 @@ fname = joinpath(@__DIR__, "../assets/pmt_acc_3d.hd5")
 h5open(fname, "w") do fid
     fid["acceptance"] = h_ratio
     attrs(fid)["bin_edges_x"] = JSON3.write(bins_pos_theta)
-    attrs(fid)["bin_edges_y"] =  JSON3.write(bins_dir_theta)
+    attrs(fid)["bin_edges_y"] = JSON3.write(bins_dir_theta)
     attrs(fid)["bin_edges_z"] = JSON3.write(bins_phi)
 end
 
-searchsortedlast([1, 2, 3, 4, 5], 6)
+fid = h5open(fname, "r")
+h_ratio = fid["acceptance"][:, :, :]
 
-h = fit(Histogram, [4.9], 1:5)
-h.weights
+mean(h_ratio, dims=[1, 3])
 
-searchsortedlast(1:5, 4.9)
-
-prob_vec = zeros(16)
-
-in_pos = sph_to_cart(coords[:, 3])
-in_dir = -sph_to_cart(coords[:, 3])
-
-for (pmt_ix, pmt_coords_sph) in enumerate(eachcol(coords))
-    pmt_vec = sph_to_cart(pmt_coords_sph)
-    pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, in_pos, in_dir)...)
-
-    i = clamp(searchsortedlast(bins_pos_theta, pos_dir[1]), 1, length(bins_pos_theta)-1)
-    j = clamp(searchsortedlast(bins_dir_theta, pos_dir[3]), 1, length(bins_dir_theta)-1)
-    k = clamp(searchsortedlast(bins_phi, pos_dir[4]), 1, length(bins_phi)-1)
-
-    prob_vec[pmt_ix] = h_ratio[i, j, k]
-  
-end
-
-total_prob = sum(prob_vec)
-@show total_prob
-if rand() < total_prob
-    w = ProbabilityWeights(prob_vec, total_prob)
-    @show sample(1:16, w)
-end
-
-@show prob_vec
-
-
-sample()
-rand()
-Multinomial()
-
-
+mean(h_ratio)
 
 heatmap(h_ratio[end, :, :])
 
 
-df = DataFrame(CSV.File(files[1]))
-pos_dir_hit = proc_df!(df[:, :], h_all, h_hit)
 
-df = DataFrame(pos_dir_hit', [:pos_theta, :pos_phi, :dir_theta, :dir_phi])
+# Setup target
+targ_pos = SA_F64[0., 5., 20.]
 
-pairplot(df)
+pmt_area = (75e-3 / 2)^2 * π
+target_radius = 0.21
 
+target = MultiPMTDetector(
+    targ_pos,
+    target_radius,
+    pmt_area,
+    make_pom_pmt_coordinates(Float64),
+    UInt16(1)
+)
 
-df
+target = convert(MultiPMTDetector{Float32}, target)
 
-all_x = []
-all_sph = []
-all_sph_tang = []
-fig = Figure(resolution=(1500, 500))
-for (pmt_ix, group) in enumerate(grouped)
-    pmt_vec = sph_to_cart(coords[1, pmt_ix], coords[2, pmt_ix])
-    R = calc_rot_matrix(pmt_vec, [0, 0, 1])
+target2 = POM(
+    targ_pos,
+    target_radius,
+    pmt_area,
+    make_pom_pmt_coordinates(Float64),
+    UInt16(1)
+)
 
-    function _f(x)
-        return cart_to_sph(R * x)
-    end
+target2 = convert(POM{Float32}, target2)
 
-    glass_pos_rot_sph = mapreduce(_f, hcat, eachrow(Matrix(group[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]])))
-    in_dir_rot_sph = mapreduce(_f , hcat, eachrow(Matrix(group[:, [:in_px, :in_py, :in_pz]])))
-    
-    glass_pos_rot = reduce(hcat, [R * v for v in eachrow(Matrix(group[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]]))])
-    in_dir_rot = reduce(hcat, [R * v for v in eachrow(Matrix(group[:, [:in_px, :in_py, :in_pz]]))])
+# Setup source
+position = SA_F32[0., 0., 0.]
+energy = Float32(1E5)
+direction = SA_F32[0., 1., 0.]
+p = Particle(position, direction, 0f0, energy, 0f0, PEMinus)
 
-    #glass_pos_cyl = reduce(hcat, cart_to_cyl.(eachcol(glass_pos_rot)))
+# Wavelength range for Cherenkov emission
+wl_range = (200f0, 800f0)
+source = ExtendedCherenkovEmitter(p, medium, wl_range)
 
-    phi = reduce(hcat, cart_to_cyl.(eachcol(glass_pos_rot)))[2, :]
-    Rs = AngleAxis.(-phi, 0, 0, 1)
+spectrum = CherenkovSpectrum(wl_range, medium)
 
-    in_dir_rot_rel_ez = reduce(hcat, Rs .* eachcol(in_dir_rot))
-    in_dir_rot_rel_ez_sph = mapreduce(collect, hcat, cart_to_sph.(eachcol(in_dir_rot_rel_ez)))
+# Setup medium
+mean_sca_angle = 0.99f0
+medium = make_cascadia_medium_properties(mean_sca_angle)
 
-    #in_dir_tang = reduce(hcat, transform_to_tangent.(eachcol(in_dir_rot), glass_pos_rot_sph[1, :], glass_pos_rot_sph[2, :]))
+# Setup spectrum
+spectrum = Monochromatic(450f0)
 
-    x_sph = vcat(glass_pos_rot_sph, in_dir_rot_sph)
-    x = vcat(glass_pos_rot, in_dir_rot)
-    x_sph_tang = vcat(glass_pos_rot_sph, in_dir_rot_rel_ez_sph)
-    push!(all_x, x)
-    push!(all_sph, x_sph)
-    push!(all_sph_tang, x_sph_tang)
+seed = 1
 
-end
-fig
-X = reduce(hcat, all_x)
-X_sph = reduce(hcat, all_sph)
-X_sph_tang = reduce(hcat, all_sph_tang)
-#X_sph[1, :] = cos.(X_sph[1, :])
-#X_sph[3, :] = cos.(X_sph[3, :])
+# Setup propagation
+setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
+setup2 = PhotonPropSetup([source], [target2], medium, spectrum, seed)
 
+# Run propagation
+photons = propagate_photons(setup)
 
-X_sph_tang
+hits = make_hits_from_photons(photons, setup)
+hits2 = make_hits_from_photons(photons, setup2)
 
-df = DataFrame(X_sph', [:pos_theta, :pos_phi, :dir_theta, :dir_phi])
 
-pairplot(df)
-
-#pairplot(DataFrame(X_sph_tang', [:pos_theta, :pos_phi, :dir_x, :dir_y, :dir_z]))
-
-df = DataFrame(X_sph_tang', [:pos_theta, :pos_phi, :dir_theta, :dir_phi])
-df[:, :cos_postheta] = cos.(df[:, :pos_theta])
-df[:, :cos_dirtheta] = cos.(df[:, :dir_theta])
-df[:, :dir_phiabs] = abs.(df[:, :dir_phi] .-π)
-
-fig = Figure()
-pairplot(fig[1, 1], df[:, [:cos_postheta, :cos_dirtheta, :dir_phiabs]] => (PairPlots.HexBin(colormap=:magma, colorrange=(0, 10000)), ) )
-
-Colorbar(fig[1, 2], colormap=:magma, colorrange=(0, 10000))
-fig
-
-fieldnames(typeof(fig.content[1]))
-    #X_sph = Matrix(grouped[1][:, [:glass_theta, :glass_phi, :in_theta, :in_phi]])
-
-fig.content[1].elements
-
-X_tr = X_sph_tang[:, 1:2:end,]
-X_te = X_sph_tang[:, 2:2:end,]
-
-
-M = fit(PCA, X_tr; maxoutdim=4)
-Yte = predict(M, X_te)
-Xr = reconstruct(M, Yte)
-X_te
-pairplot(X_tr', Xr')
-
-bins_costheta = -1:0.05:1
-bins_phi = 0:0.1:π
-
-lut = Matrix(df[:, [:cos_postheta, :cos_dirtheta, :dir_phiabs]])
-h = fit(Histogram, tuple(eachcol(lut)...), (bins_costheta, bins_costheta, bins_phi))
-
-Ah.weights
-
-eigvals(M)
-
-pmt_pos_geant = Vector{Vector{Float64}}()
-for (groupkey, group) in pairs()
-    @show groupkey
-    out_pos = Matrix(group[:, ["out_x", "out_y", "out_z"]])
-    out_pos_rot = reduce(hcat, [R * r for r in eachrow(out_pos)])
-    avg_pos = vec(sum(out_pos_rot, dims=2)  / size(out_pos_rot, 2))
-    
-    push!(pmt_pos_geant, collect(avg_pos ./ norm(avg_pos)))
-end
-
-
-pmt_pos_geant = reduce(hcat, pmt_pos_geant)
-rad2deg.(mapreduce(collect, hcat, cart_to_sph.(eachcol(pmt_pos_geant))))
-
-pmt_pos_sim = reduce(hcat, [sph_to_cart(x...) for x in eachcol(make_pom_pmt_coordinates(Float64))])
-
-fig = Figure()
-ax = Axis3(fig[1, 1], aspect=(1, 1, 1))
-scatter!(ax, pmt_pos_geant)
-scatter!(ax, pmt_pos_sim)
-fig
-
-
-h_hit = histogram(cos.(hit_pc[:, :]), bins)
-h_all = histogram(cos.(hit_pc[1, :]), bins)
-
-
-
-
-pairplot(hit_pc[:, ["dir_theta", "dir_phi", "1_x", "1_y", "1_z"]])
-
-
-
-fig, ax = hist(cos.(directions[1, :]))
-hist((directions[2, :]))
-
-
-
-
-
-function histogram(x, bins)
-    bin_ixs = searchsortedfirst.(Ref(bins), x) .-1
-    return counts(bin_ixs, length(bins)-1)
-end
-
-
-heatmap(cos.(directions[1, :]), out_pos[:, 1])
-
-bins = -1:0.05:1
-bin_ixs = searchsortedfirst.(Ref(bins), cos.(directions[1, :])) .-1
-
-h_hit = histogram(cos.(directions[1, :]), bins)
-h_all = histogram(cos.(directions_all[1, :]), bins)
-
-h_ratio = h_hit ./h_all
-
-[h_ratio; 0]
-
-stairs(bins, [h_ratio; h_ratio[end]], step=:post)
-
-
-
-counts(bin_ixs)
-length(bins)
-
-Matrix(df[sel, [:in_x, :in_y, :in_z, :in_px, :in_py, :in_pz]])
-
-
-p1 = Matrix(df[sel, [:in_x, :in_y, :in_z,]])
-pend = Matrix(df[sel, [:out_x, :out_y, :out_z]])
-step1 = Matrix(df[sel, [:out_x, :out_y, :out_z]])
-dir =  Matrix(df[sel, [:1_x, :1_y, :1_z]])
-
-(pend .- p1) ./ dir
-lines(hcat(p1[2, :], step1[2, :], pend[2, :]))
-
-hcat(p1[1, :], step1[1, :], pend[1:10, :])
+combine(groupby(hits, :pmt_id), nrow)
+combine(groupby(hits2, :pmt_id), nrow)

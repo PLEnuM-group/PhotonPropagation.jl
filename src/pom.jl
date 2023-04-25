@@ -1,7 +1,7 @@
-export p_one_pmt_wl_acc
+export p_one_pmt_wl_acc, POM
 using HDF5
 using StatsBase
-
+using JSON3
 
 df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv",), DataFrame, header=["wavelength", "acceptance"])
 p_one_pmt_wl_acc = PMTWavelengthAcceptance(df[:, :wavelength], df[:, :acceptance])
@@ -15,9 +15,12 @@ end
 
 function POMPositionalAcceptance(filename::String)
     fid = h5open(filename, "r")
-    acc = fid["acceptance"]
-    att = attr(fid)
-    return POMPositionalAcceptance(acc, att["bin_edges_x"], att["bin_edges_y"], att["bin_edges_z"])
+    acc = fid["acceptance"][:, :, :]
+    att = attrs(fid)
+    edges_x = JSON3.read(att["bin_edges_x"])
+    edges_y = JSON3.read(att["bin_edges_y"])
+    edges_z = JSON3.read(att["bin_edges_z"])
+    return POMPositionalAcceptance(acc, edges_x, edges_y, edges_z)
 end
 
 p_one_pmt_acc = POMPositionalAcceptance(joinpath(PROJECT_ROOT, "assets/pmt_acc_3d.hd5"))
@@ -86,15 +89,17 @@ function calc_relative_pmt_coords(pmt_coords, in_position::AbstractVector, in_di
 end
 
 
-function check_pom_pmt_hit(pmt_positions, hit_position, hit_direction)
+function check_pom_pmt_hit(pmt_positions, hit_positions::AbstractVector, hit_directions::AbstractVector)
 
     bins_x = p_one_pmt_acc.bin_edges_x
     bins_y = p_one_pmt_acc.bin_edges_y
     bins_z = p_one_pmt_acc.bin_edges_z
 
+    prob_vec = zeros(length(pmt_positions))
+
     # Fill probability vector
-    for (pmt_ix, pmt_vec) in enumerate(eachcol(pmt_positions))
-        pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, hit_position, hit_direction)...)
+    for (pmt_ix, pmt_vec) in enumerate(pmt_positions)
+        pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, hit_positions, hit_directions)...)
     
         i = clamp(searchsortedlast(bins_x, pos_dir[1]), 1, length(bins_x)-1)
         j = clamp(searchsortedlast(bins_y, pos_dir[3]), 1, length(bins_y)-1)
@@ -108,7 +113,7 @@ function check_pom_pmt_hit(pmt_positions, hit_position, hit_direction)
     end    
     
     w = ProbabilityWeights(prob_vec, total_prob)
-    return sample(size(pmt_positions, 2), w)
+    return sample(1:length(pmt_positions), w)
 end
 
 
@@ -119,7 +124,10 @@ function check_pmt_hit(
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
 
     pmt_positions = get_pmt_positions(target, orientation)
-    pmt_hit_ids = check_pom_pmt_hit.(Ref(pmt_positions), hit_positions, hit_directions)
+
+    rel_positions = (hit_positions .- Ref(target.position)) ./ target.radius
+
+    pmt_hit_ids = check_pom_pmt_hit.(Ref(pmt_positions), rel_positions, hit_directions)
 
     return pmt_hit_ids
 
