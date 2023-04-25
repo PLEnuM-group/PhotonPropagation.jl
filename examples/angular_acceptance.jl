@@ -128,7 +128,6 @@ end
 
 fid = h5open(fname, "r")
 h_ratio = fid["acceptance"][:, :, :]
-
 mean(h_ratio, dims=[1, 3])
 
 mean(h_ratio)
@@ -169,18 +168,16 @@ energy = Float32(1E5)
 direction = SA_F32[0., 1., 0.]
 p = Particle(position, direction, 0f0, energy, 0f0, PEMinus)
 
-# Wavelength range for Cherenkov emission
-wl_range = (200f0, 800f0)
-source = ExtendedCherenkovEmitter(p, medium, wl_range)
-
-spectrum = CherenkovSpectrum(wl_range, medium)
-
 # Setup medium
 mean_sca_angle = 0.99f0
 medium = make_cascadia_medium_properties(mean_sca_angle)
 
-# Setup spectrum
-spectrum = Monochromatic(450f0)
+# Wavelength range for Cherenkov emission
+wl_range = (200f0, 800f0)
+source = ExtendedCherenkovEmitter(p, medium, wl_range)
+
+
+spectrum = CherenkovSpectrum(wl_range, medium)
 
 seed = 1
 

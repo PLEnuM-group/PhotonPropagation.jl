@@ -82,10 +82,7 @@ end
 
 
 function calc_relative_pmt_coords(pmt_coords, in_position::AbstractVector, in_direction::AbstractVector)
-
-    res_mat = calc_relative_pmt_coords(pmt_coords, reshape(in_position, 1, length(in_position)),  reshape(in_direction, 1, length(in_direction)))
-
-    return res_mat[1][:], res_mat[2][:]
+    return calc_relative_pmt_coords(pmt_coords, reduce(hcat, in_position)', reduce(hcat, in_direction)')
 end
 
 
@@ -95,25 +92,33 @@ function check_pom_pmt_hit(pmt_positions, hit_positions::AbstractVector, hit_dir
     bins_y = p_one_pmt_acc.bin_edges_y
     bins_z = p_one_pmt_acc.bin_edges_z
 
-    prob_vec = zeros(length(pmt_positions))
+    n_hits = length(hit_positions)
+    n_pmts = length(pmt_positions)
+
+    prob_vec = zeros(n_pmts, n_hits)
 
     # Fill probability vector
     for (pmt_ix, pmt_vec) in enumerate(pmt_positions)
         pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, hit_positions, hit_directions)...)
     
-        i = clamp(searchsortedlast(bins_x, pos_dir[1]), 1, length(bins_x)-1)
-        j = clamp(searchsortedlast(bins_y, pos_dir[3]), 1, length(bins_y)-1)
-        k = clamp(searchsortedlast(bins_z, pos_dir[4]), 1, length(bins_z)-1)
-        prob_vec[pmt_ix] = p_one_pmt_acc.acc_hist[i, j, k]      
+        i = clamp.(searchsortedlast.(Ref(bins_x), pos_dir[1, :]), 1, length(bins_x)-1)
+        j = clamp.(searchsortedlast.(Ref(bins_y), pos_dir[3, :]), 1, length(bins_y)-1)
+        k = clamp.(searchsortedlast.(Ref(bins_z), pos_dir[4, :]), 1, length(bins_z)-1)
+
+        prob_vec[pmt_ix, :] = getindex.(Ref(p_one_pmt_acc.acc_hist), i, j, k) # p_one_pmt_acc.acc_hist[i, j, k]      
     end
     
-    total_prob = sum(prob_vec)
-    if rand() > total_prob
-        return 0
-    end    
+    # TODO: in principle probabilities could become > 1, so add poisson sampling here
+    total_prob = sum(prob_vec, dims=1)[:]
+
+    pmt_ixs = zeros(n_hits)
+    sucess = rand(n_hits) .< total_prob
     
-    w = ProbabilityWeights(prob_vec, total_prob)
-    return sample(1:length(pmt_positions), w)
+    w = ProbabilityWeights.(eachcol(prob_vec[:, sucess]), total_prob[sucess])
+
+    pmt_ixs[sucess] = sample.(Ref(1:length(pmt_positions)), w)
+
+    return pmt_ixs
 end
 
 
@@ -127,7 +132,9 @@ function check_pmt_hit(
 
     rel_positions = (hit_positions .- Ref(target.position)) ./ target.radius
 
-    pmt_hit_ids = check_pom_pmt_hit.(Ref(pmt_positions), rel_positions, hit_directions)
+
+
+    pmt_hit_ids = check_pom_pmt_hit(pmt_positions, rel_positions, hit_directions)
 
     return pmt_hit_ids
 
