@@ -20,6 +20,7 @@ function POMPositionalAcceptance(filename::String)
     edges_x = JSON3.read(att["bin_edges_x"])
     edges_y = JSON3.read(att["bin_edges_y"])
     edges_z = JSON3.read(att["bin_edges_z"])
+    close(fid)
     return POMPositionalAcceptance(acc, edges_x, edges_y, edges_z)
 end
 
@@ -58,69 +59,30 @@ JSON.lower(d::POM) = Dict(
     "pmt_coordinates" => d.pmt_coordinates,
     "module_id" => Int(d.module_id))
 
+function calc_relative_pmt_coords(rot_mat::AbstractMatrix, in_position::AbstractVector, in_direction::AbstractVector)
+
+    in_pos_rot = rot_mat * in_position
+    in_dir_rot = rot_mat * in_direction
+
+    in_pos_rot_rot_sph = cart_to_sph(in_pos_rot)
+
+    # Calculate phi direction relative to glass position 
+    # by rotating around e_z
+    phi = cart_to_cyl(in_pos_rot)[2]
+    Rs = AngleAxis.(-phi, 0, 0, 1)
+    in_dir_rot_rel_ez_sph = cart_to_sph(Rs * in_dir_rot)
+    
+    return hcat(in_pos_rot_rot_sph..., in_dir_rot_rel_ez_sph...)
+
+end
 
 function calc_relative_pmt_coords(pmt_coords, in_position::AbstractMatrix, in_direction::AbstractMatrix)
 
     # Rotate pmt to e_z
     R = calc_rot_matrix(pmt_coords, [0, 0, 1])
 
-    in_dir_rot = map(v -> R*v, eachrow(in_position))
-    glass_pos_rot = map(v -> R*v, eachrow(in_direction))
-   
-    glass_pos_rot_sph = cart_to_sph.(glass_pos_rot)
-
-    # Calculate phi direction relative to glass position 
-    # by rotating around e_z
-    phi = map(x -> cart_to_cyl(x)[2], glass_pos_rot)
-    Rs = AngleAxis.(-phi, 0, 0, 1)
-
-    in_dir_rot_rel_ez = Rs .* in_dir_rot
-    in_dir_rot_rel_ez_sph = cart_to_sph.(in_dir_rot_rel_ez)
-    
-    return reduce(hcat, glass_pos_rot_sph), reduce(hcat, in_dir_rot_rel_ez_sph)
+    return calc_relative_pmt_coords.(Ref(R), eachrow(in_position), eachrow(in_direction))
 end
-
-
-function calc_relative_pmt_coords(pmt_coords, in_position::AbstractVector, in_direction::AbstractVector)
-    return calc_relative_pmt_coords(pmt_coords, reduce(hcat, in_position)', reduce(hcat, in_direction)')
-end
-
-
-function check_pom_pmt_hit(pmt_positions, hit_positions::AbstractVector, hit_directions::AbstractVector)
-
-    bins_x = p_one_pmt_acc.bin_edges_x
-    bins_y = p_one_pmt_acc.bin_edges_y
-    bins_z = p_one_pmt_acc.bin_edges_z
-
-    n_hits = length(hit_positions)
-    n_pmts = length(pmt_positions)
-
-    prob_vec = zeros(n_pmts, n_hits)
-
-    # Fill probability vector
-    for (pmt_ix, pmt_vec) in enumerate(pmt_positions)
-        pos_dir = vcat(calc_relative_pmt_coords(pmt_vec, hit_positions, hit_directions)...)
-    
-        i = clamp.(searchsortedlast.(Ref(bins_x), pos_dir[1, :]), 1, length(bins_x)-1)
-        j = clamp.(searchsortedlast.(Ref(bins_y), pos_dir[3, :]), 1, length(bins_y)-1)
-        k = clamp.(searchsortedlast.(Ref(bins_z), pos_dir[4, :]), 1, length(bins_z)-1)
-
-        prob_vec[pmt_ix, :] = getindex.(Ref(p_one_pmt_acc.acc_hist), i, j, k) # p_one_pmt_acc.acc_hist[i, j, k]      
-    end
-    
-    # TODO: in principle probabilities could become > 1, so add poisson sampling here
-    total_prob = sum(prob_vec, dims=1)[:]
-
-    pmt_ixs = zeros(n_hits)
-    sucess = rand(n_hits) .< total_prob
-    
-    w = ProbabilityWeights.(eachcol(prob_vec[:, sucess]), total_prob[sucess])
-
-    pmt_ixs[sucess] = sample.(Ref(1:length(pmt_positions)), w)
-
-    return pmt_ixs
-end
-
 
 function check_pmt_hit(
     hit_positions::AbstractVector{T},
@@ -130,11 +92,39 @@ function check_pmt_hit(
 
     pmt_positions = get_pmt_positions(target, orientation)
 
-    rel_positions = (hit_positions .- Ref(target.position)) ./ target.radius
+    bins_x = p_one_pmt_acc.bin_edges_x
+    bins_y = p_one_pmt_acc.bin_edges_y
+    bins_z = p_one_pmt_acc.bin_edges_z
 
+    rot_mats = calc_rot_matrix.(pmt_positions, Ref([0, 0, 1]))
+    prob_vec = zeros(get_pmt_count(target))
 
+    pmt_hit_ids = zeros(length(hit_positions))
 
-    pmt_hit_ids = check_pom_pmt_hit(pmt_positions, rel_positions, hit_directions)
+    for (hit_id, (hit_pos, hit_dir)) in enumerate(zip(hit_positions, hit_directions))
+        rel_pos = (hit_pos .- target.position) ./ target.radius
+
+        # Calc hit fraction per PMT
+        for (pmt_ix, rot_mat) in enumerate(rot_mats)
+    
+            pos_dir = calc_relative_pmt_coords(rot_mat, rel_pos, hit_dir)
+
+            i = clamp(searchsortedlast(bins_x, pos_dir[1]), 1, length(bins_x)-1)
+            j = clamp(searchsortedlast(bins_y, pos_dir[3]), 1, length(bins_y)-1)
+            k = clamp(searchsortedlast(bins_z, pos_dir[4]), 1, length(bins_z)-1)
+
+            prob_vec[pmt_ix] = p_one_pmt_acc.acc_hist[i, j, k]
+        end            
+               
+
+        no_hit = reduce(*, 1 .- prob_vec)
+        hit_prob = 1 - no_hit
+
+        if rand() < hit_prob
+            w = ProbabilityWeights(prob_vec)
+            pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
+        end
+    end
 
     return pmt_hit_ids
 

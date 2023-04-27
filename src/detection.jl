@@ -14,6 +14,7 @@ using PhysicsTools
 export PhotonTarget, DetectionSphere, MultiPMTDetector, get_pmt_count
 export geometry_type, Spherical, Rectangular, RectangularDetector, Circular, CircularDetector
 export check_pmt_hit
+export get_pmt_positions
 export make_detector_cube, make_targets, make_detector_hex
 export area_acceptance
 
@@ -119,7 +120,8 @@ function check_pmt_hit_opening_angle(
 ) where {T<:AbstractVector{<:Real}}
 
     for (j, pmtpos) in enumerate(pmt_positions)
-        if acos(clamp(dot(rel_hit_position, pmtpos), -1.0, 1.0)) < opening_angle
+        angle_pos_pmt = acos(clamp(dot(rel_hit_position, pmtpos), -1.0, 1.0))
+        if angle_pos_pmt < opening_angle
             return j
         end
     end
