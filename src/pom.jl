@@ -7,7 +7,7 @@ df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv",), DataFrame, header=["
 p_one_pmt_wl_acc = PMTWavelengthAcceptance(df[:, :wavelength], df[:, :acceptance])
 
 struct POMPositionalAcceptance <: PositionalAcceptance
-    acc_hist::Array{Float64, 3}
+    acc_hist::Array{Float64, 4}
     bin_edges_x::Vector{Float64}
     bin_edges_y::Vector{Float64}
     bin_edges_z::Vector{Float64}
@@ -15,7 +15,7 @@ end
 
 function POMPositionalAcceptance(filename::String)
     fid = h5open(filename, "r")
-    acc = fid["acceptance"][:, :, :]
+    acc = fid["acceptance"][:, :, :, :]
     att = attrs(fid)
     edges_x = JSON3.read(att["bin_edges_x"])
     edges_y = JSON3.read(att["bin_edges_y"])

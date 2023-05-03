@@ -17,6 +17,10 @@ using BenchmarkTools
 using HDF5
 using Distributions
 using JSON3
+using PhysicalConstants.CODATA2018
+using Unitful
+using BSplineKit
+using Polynomials
 import PhotonPropagation.Detection: calc_relative_pmt_coords
 
 begin
@@ -51,7 +55,8 @@ end
 
 function proc_df!(df, h_all, h_hit)
        
-    pos_glas = Matrix(df[:, ["1_x", "1_y", "1_z"]])
+    #pos_glas = Matrix(df[:, ["1_x", "1_y", "1_z"]])
+    pos_glas = Matrix(df[:, ["in_x", "in_y", "in_z"]])
     pos_glas[(pos_glas[:, 3] .>= 45), :] .-= permutedims([0, 0, 45])
     pos_glas[(pos_glas[:, 3] .<= -45), :] .+= permutedims([0, 0, 45])
     norm_glass = norm.(eachrow(pos_glas))
@@ -60,6 +65,10 @@ function proc_df!(df, h_all, h_hit)
     df[!, :glass_norm_x] .= pos_glas_normed[:, 1]
     df[!, :glass_norm_y] .= pos_glas_normed[:, 2]
     df[!, :glass_norm_z] .= pos_glas_normed[:, 3]
+
+    df[!, :wavelength] .= round.(ustrip(u"nm", PlanckConstant * SpeedOfLightInVacuum ./ ( df[1, :in_E]u"eV")))
+
+    @show df[1, :wavelength]
 
     in_dir = Matrix(df[:, [:in_px, :in_py, :in_pz]])
     in_pos = Matrix(df[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]])
@@ -72,17 +81,18 @@ function proc_df!(df, h_all, h_hit)
 
         sel = (
             (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
-            df[:, :out_Volume_CopyNo] .== copy_no
+            df[:, :out_Volume_CopyNo] .== copy_no .&& 
+            df[:, :out_ProcessName] .== "OpAbsorption"
             )
 
-        sel_mod = df[:, :out_VolumeName] .!= "water"
-
+        sel_all = Colon()
        
         pos_dir = reduce(vcat, calc_relative_pmt_coords(pmt_vec, in_pos, in_dir))
         pos_dir_hit_pmt = pos_dir[sel, :]
-        pos_dir_hit = pos_dir[sel_mod, :]
-        h_all_i = fit(Histogram, ((pos_dir_hit[:, 1]), (pos_dir_hit[:, 3]), pos_dir_hit[:, 4]), (bins_pos_theta, bins_dir_theta, bins_phi))
-        h_hit_i = fit(Histogram, ((pos_dir_hit_pmt[:, 1]), (pos_dir_hit_pmt[:, 3]), pos_dir_hit_pmt[:, 4]), (bins_pos_theta, bins_dir_theta, bins_phi))
+        pos_dir_hit = pos_dir[sel_all, :]
+
+        h_all_i = StatsBase.fit(Histogram, (df[sel_all, :wavelength], (pos_dir_hit[:, 1]), (pos_dir_hit[:, 3]), pos_dir_hit[:, 4]), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
+        h_hit_i = StatsBase.fit(Histogram, (df[sel, :wavelength], (pos_dir_hit_pmt[:, 1]), (pos_dir_hit_pmt[:, 3]), pos_dir_hit_pmt[:, 4]), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
 
         merge!(h_all, h_all_i)
         merge!(h_hit, h_hit_i)
@@ -94,16 +104,18 @@ function proc_df!(df, h_all, h_hit)
 end
 
 
-bins_pos_theta = 0:0.1:π
+bins_pos_theta = 0:0.1:π/2
 bins_dir_theta = 0:0.1:π
 bins_phi = 0:0.1:2*π
+bins_wl = 250:20:690
 
-h_all = fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
-h_hit = fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
+h_all = StatsBase.fit(Histogram, ([], [], [], []), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
+h_hit = StatsBase.fit(Histogram, ([], [], [], []), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
 
 #sim_path = joinpath(ENV["WORK"], "geant4_pmt")
 
-sim_path = "/home/chrhck"
+sim_path = "/home/chrhck/geant4_sims/P-OM photons 30 cm sphere/"
+
 files = glob("*.csv", sim_path)
 
 #df_list = []
@@ -114,12 +126,106 @@ files = glob("*.csv", sim_path)
 end
 #df = reduce(vcat, df_list)
 
+
 h_ratio = h_hit.weights ./ h_all.weights
 h_ratio[h_all.weights .== 0] .= 0
 
-h_ratio_avg = mean(h_ratio, dims=[1, 3])[:]
+h_ratio_avg = mean(h_ratio, dims=[2, 3, 4])[:]
+stairs(bins_wl, [h_ratio_avg; h_ratio_avg[end]])
 
+
+h_ratio_avg = mean(h_ratio, dims=[1, 3, 4])[:]
+stairs(bins_pos_theta, [h_ratio_avg; h_ratio_avg[end]])
+
+
+h_ratio_avg = mean(h_ratio, dims=[1, 2, 4])[:]
 stairs(bins_dir_theta, [h_ratio_avg; h_ratio_avg[end]])
+
+h_ratio_avg = mean(h_ratio, dims=[1, 2, 3])[:]
+stairs(bins_phi, [h_ratio_avg; h_ratio_avg[end]])
+
+
+h_ratio_avg = dropdims(mean(h_ratio, dims=[1, 2]), dims=(1, 2))
+heatmap(bins_dir_theta, bins_phi, h_ratio_avg)
+
+h_ratio_avg = dropdims(mean(h_ratio, dims=[1, 3]), dims=(1, 3))
+heatmap(bins_pos_theta, bins_phi, h_ratio_avg)
+
+h_ratio_avg = dropdims(mean(h_ratio, dims=[3, 4]), dims=(3, 4))
+heatmap(bins_wl, bins_pos_theta, h_ratio_avg)
+
+h_ratio_avg = dropdims(mean(h_ratio, dims=[2, 4]), dims=(2, 4))
+heatmap(bins_wl, bins_dir_theta, h_ratio_avg)
+
+h_ratio_avg = dropdims(mean(h_ratio, dims=[2, 3]), dims=(2, 3))
+heatmap(bins_wl, bins_phi, h_ratio_avg)
+
+
+
+df = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/duran_1mm.csv")))
+df2 = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/duran_2mm.csv")))
+df3 = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/duran_8mm.csv")))
+
+function make_interp(df)
+    sargs = sortperm(df[:, :wavelength])
+    y = df[sargs, :transmissivity]
+    y[y .== 0] .= 1E-7
+    y = log.(y ./ 100)
+    itp = interpolate(df[sargs, :wavelength], y, BSplineOrder(3))
+    return itp
+end
+
+
+itp = make_interp(df)
+itp2 = make_interp(df2)
+itp3 = make_interp(df3)
+
+wl_eval = 250:1:1000
+
+ys = [itp.(wl_eval), itp2.(wl_eval), itp3.(wl_eval)]
+ys = reduce(hcat, ys)
+xs = [1, 2, 8]
+
+polys = Polynomials.fit.(Ref(xs), eachrow(ys), 1) 
+
+p_eval = [p(14) for p in polys]
+
+fig = Figure()
+ax = Axis(fig[1, 1], xlabel="Wavelength (nm)", ylabel="Transmissivity %")
+
+lines!(ax, wl_eval, exp.(itp.(wl_eval)), label="1mm")
+lines!(ax, wl_eval, exp.(itp2.(wl_eval)), label="2mm")
+lines!(ax, wl_eval, exp.(itp3.(wl_eval)), label="8mm")
+lines!(ax, wl_eval, exp.(p_eval), label="14mm (extp)")
+
+pmt_acc = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/PMTAcc.csv"), header=["wavelength", "acceptance"]))
+
+lines!(ax, pmt_acc[:, :wavelength], pmt_acc[:, :acceptance] , label="PMT")
+Legend(fig[1, 2], ax)
+fig
+
+wl_ts = DataFrame(wavelength=wl_eval, transmissivity=exp.(p_eval))
+wl_ts[!, :lambda_abs] .= -14E-3 ./ log.(wl_ts[!, :transmissivity])
+
+
+CSV.write(joinpath(@__DIR__, "../assets/duran_wl_acc_14mm.csv"), wl_ts)
+
+
+
+
+xs = 250:1:800
+fig, ax = lines(df[sargs, :wavelength], df[sargs, :transmissivity])
+lines!(ax, xs, itp.(xs))
+xlims!(ax, 200, 1000)
+fig
+
+xs = 250:1:800
+sargs = sortperm(df2[:, :wavelength])
+fig, ax = lines(df2[sargs, :wavelength], df2[sargs, :transmissivity])
+lines!(ax, xs, itp2.(xs))
+xlims!(ax, 200, 1000)
+fig
+
 
 
 df = DataFrame(CSV.File(files[1]))
@@ -127,8 +233,6 @@ sel = (
     (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube"))
 
 sel_mod = df[:, :out_VolumeName] .!= "water"
-
-
 
 
 sum(sel_mod)
@@ -149,9 +253,9 @@ h5open(fname, "w") do fid
 end
 
 fid = h5open(fname, "r")
-h_ratio = fid["acceptance"][:, :, :]
+h_ratio = fid["acceptance"][:, :, :, :]
 
-heatmap(h_ratio[1, :, :])
+heatmap(h_ratio[5, 21, :, :])
 
 
 # Setup target
@@ -170,6 +274,7 @@ target = MultiPMTDetector(
 
 target = convert(MultiPMTDetector{Float32}, target)
 
+target_radius = 0.3
 target2 = POM(
     targ_pos,
     target_radius,
