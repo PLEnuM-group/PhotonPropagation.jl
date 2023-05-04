@@ -20,23 +20,60 @@ export area_acceptance
 
 const PROJECT_ROOT = pkgdir(Detection)
 
-abstract type PhotonTarget end
-abstract type PixelatedTarget <: PhotonTarget end
-
 abstract type TargetShape end
-struct Spherical <: TargetShape end
-struct Rectangular <: TargetShape end
-struct Circular <: TargetShape end
+struct Spherical{T <: Real} <: TargetShape
+    position::SVector{3, T}
+    radius::T
+end
 
-struct DetectionSphere{T<:Real} <: PhotonTarget
+struct Rectangular{T <: Real} <: TargetShape
+    position::SVector{3, T}
+    length_x::T
+    length_y::T
+end
+
+struct Circular{T <: Real} <: TargetShape 
     position::SVector{3,T}
     radius::T
-    n_pmts::Int64
+end
+
+
+function Base.convert(::Type{Spherical{T}}, x::Spherical) where {T}
+    return Spherical(T.(x.position), T(x.radius))
+end
+
+function Base.convert(::Type{Rectangular{T}}, x::Rectangular) where {T}
+    return Rectangular(T.(x.position), T(x.length_x), T(x.length_y))
+end
+
+function Base.convert(::Type{Circular{T}}, x::Circular) where {T}
+    return Circular(T.(x.position), T(x.radius))
+end
+
+abstract type PhotonTarget{T<:TargetShape} end
+abstract type PixelatedTarget{T<:TargetShape} <: PhotonTarget{T} end
+
+geometry_type(::PhotonTarget{TS}) where {TS <:TargetShape} = TS
+
+
+struct HomogeneousDetector{T <: Real, TS <: TargetShape} <: PhotonTarget{TS}
+    shape::TS
     pmt_area::T
     module_id::UInt16
 end
 
-geometry_type(::Type{<:DetectionSphere}) = Spherical()
+struct MultiPMTDetector{T<:Real,N,L, TS <: TargetShape} <: PixelatedTarget
+    position::SVector{3,T}
+    radius::T
+    pmt_area::T
+    pmt_coordinates::SMatrix{2,N,T,L}
+    module_id::UInt16
+end
+
+
+
+
+
 
 function Base.convert(::Type{DetectionSphere{T}}, x::DetectionSphere) where {T}
     pos = T.(x.position)
@@ -45,15 +82,6 @@ function Base.convert(::Type{DetectionSphere{T}}, x::DetectionSphere) where {T}
     return DetectionSphere(pos, radius, x.n_pmts, pmt_area, x.module_id)
 end
 
-
-struct MultiPMTDetector{T<:Real,N,L} <: PixelatedTarget
-    position::SVector{3,T}
-    radius::T
-    pmt_area::T
-    pmt_coordinates::SMatrix{2,N,T,L}
-    module_id::UInt16
-end
-geometry_type(::Type{<:MultiPMTDetector}) = Spherical()
 
 function Base.convert(::Type{MultiPMTDetector{T, N, L}}, x::MultiPMTDetector) where {T,N,L}
     pos = T.(x.position)
@@ -128,10 +156,11 @@ function check_pmt_hit_opening_angle(
     return 0
 end
 
-check_pmt_hit(hit_positions::AbstractVector, ::AbstractVector, ::DetectionSphere, ::Rotation) = ones(length(hit_positions))
+check_pmt_hit(hit_positions::AbstractVector, ::AbstractVector, ::AbstractVector, ::DetectionSphere, ::Rotation) = ones(length(hit_positions))
 
 function check_pmt_hit(
     hit_positions::AbstractVector{T},
+    ::AbstractVector,
     ::AbstractVector,
     target::PixelatedTarget,
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}

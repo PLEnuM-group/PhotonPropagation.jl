@@ -3,29 +3,30 @@ using HDF5
 using StatsBase
 using JSON3
 
-df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv",), DataFrame, header=["wavelength", "acceptance"])
-p_one_pmt_wl_acc = PMTWavelengthAcceptance(df[:, :wavelength], df[:, :acceptance])
+
 
 struct POMPositionalAcceptance <: PositionalAcceptance
-    acc_hist::Array{Float64, 4}
+    pos_acc::Array{Float64, 4}
+    wl_acc::Array{Float64, 1}
     bin_edges_x::Vector{Float64}
     bin_edges_y::Vector{Float64}
     bin_edges_z::Vector{Float64}
+    bin_edges_wl::Vector{Float64}
 end
 
 function POMPositionalAcceptance(filename::String)
     fid = h5open(filename, "r")
-    acc = fid["acceptance"][:, :, :, :]
+    pos_acc = fid["pos_acceptance"][:, :, :, :]
     att = attrs(fid)
     edges_x = JSON3.read(att["bin_edges_x"])
     edges_y = JSON3.read(att["bin_edges_y"])
     edges_z = JSON3.read(att["bin_edges_z"])
+
+    wl_acc = fid["wl_acceptance"][:]
+    wl_bins = JSON3.read(att["bin_edges_wl"])
     close(fid)
-    return POMPositionalAcceptance(acc, edges_x, edges_y, edges_z)
+    return POMPositionalAcceptance(pos_acc, wl_acc, edges_x, edges_y, edges_z, wl_bins)
 end
-
-p_one_pmt_acc = POMPositionalAcceptance(joinpath(PROJECT_ROOT, "assets/pmt_acc_3d.hd5"))
-
 
 
 struct POM{T<:Real,N,L} <: PixelatedTarget
@@ -34,6 +35,7 @@ struct POM{T<:Real,N,L} <: PixelatedTarget
     pmt_area::T
     pmt_coordinates::SMatrix{2,N,T,L}
     module_id::UInt16
+    positional_acceptan
 end
 
 function Base.convert(::Type{POM{T}}, x::POM) where {T}
@@ -87,6 +89,7 @@ end
 function check_pmt_hit(
     hit_positions::AbstractVector{T},
     hit_directions::AbstractVector{T},
+    hit_wavelengths::AbstractVector{T},
     target::POM,
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
 
@@ -95,6 +98,7 @@ function check_pmt_hit(
     bins_x = p_one_pmt_acc.bin_edges_x
     bins_y = p_one_pmt_acc.bin_edges_y
     bins_z = p_one_pmt_acc.bin_edges_z
+    bins_wl = po
 
     rot_mats = calc_rot_matrix.(pmt_positions, Ref([0, 0, 1]))
     prob_vec = zeros(get_pmt_count(target))
@@ -129,3 +133,7 @@ function check_pmt_hit(
     return pmt_hit_ids
 
 end
+
+#p_one_pmt_acc = POMPositionalAcceptance(joinpath(PROJECT_ROOT, "assets/pmt_acc_3d.hd5"))
+df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv",), DataFrame, header=["wavelength", "acceptance"])
+p_one_pmt_wl_acc = PMTWavelengthAcceptance(df[:, :wavelength], df[:, :acceptance])
