@@ -15,6 +15,7 @@ using Glob
 using ProgressLogging
 using BenchmarkTools
 using HDF5
+using Interpolations
 using Distributions
 using JSON3
 using PhysicalConstants.CODATA2018
@@ -53,7 +54,7 @@ begin
 end
 
 
-function proc_df!(df, h_all, h_hit)
+function proc_df(df, bins_pos_theta, bins_dir_theta, bins_phi)
        
     #pos_glas = Matrix(df[:, ["1_x", "1_y", "1_z"]])
     pos_glas = Matrix(df[:, ["in_x", "in_y", "in_z"]])
@@ -68,10 +69,13 @@ function proc_df!(df, h_all, h_hit)
 
     df[!, :wavelength] .= round.(ustrip(u"nm", PlanckConstant * SpeedOfLightInVacuum ./ ( df[1, :in_E]u"eV")))
 
-    @show df[1, :wavelength]
-
     in_dir = Matrix(df[:, [:in_px, :in_py, :in_pz]])
     in_pos = Matrix(df[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]])
+
+     
+
+    h_all = StatsBase.fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
+    h_hit = StatsBase.fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
 
     #all_pos_dir_hit = []
     for (pmt_ix, pmt_coords_sph) in enumerate(eachcol(coords))
@@ -91,58 +95,65 @@ function proc_df!(df, h_all, h_hit)
         pos_dir_hit_pmt = pos_dir[sel, :]
         pos_dir_hit = pos_dir[sel_all, :]
 
-        h_all_i = StatsBase.fit(Histogram, (df[sel_all, :wavelength], (pos_dir_hit[:, 1]), (pos_dir_hit[:, 3]), pos_dir_hit[:, 4]), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
-        h_hit_i = StatsBase.fit(Histogram, (df[sel, :wavelength], (pos_dir_hit_pmt[:, 1]), (pos_dir_hit_pmt[:, 3]), pos_dir_hit_pmt[:, 4]), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
+        h_all_i = StatsBase.fit(Histogram, (pos_dir_hit[:, 1], (pos_dir_hit[:, 3]), pos_dir_hit[:, 4]), (bins_pos_theta, bins_dir_theta, bins_phi))
+        h_hit_i = StatsBase.fit(Histogram, (pos_dir_hit_pmt[:, 1], (pos_dir_hit_pmt[:, 3]), pos_dir_hit_pmt[:, 4]), (bins_pos_theta, bins_dir_theta, bins_phi))
 
-        merge!(h_all, h_all_i)
-        merge!(h_hit, h_hit_i)
-        #push!(all_pos_dir_hit, pos_dir_hit)
+        h_all = merge(h_all, h_all_i)
+        h_hit = merge(h_hit, h_hit_i)
+
+
     end
-    
-    #return reduce(vcat, all_pos_dir_hit)
+  
+
+    return h_all, h_hit, df[1, :wavelength]
 
 end
 
 
-bins_pos_theta = 0:0.1:1
-bins_dir_theta = 0:0.1:π
-bins_phi = 0:0.1:2*π
-bins_wl = 300:20:690
-
-h_all = StatsBase.fit(Histogram, ([], [], [], []), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
-h_hit = StatsBase.fit(Histogram, ([], [], [], []), (bins_wl, bins_pos_theta, bins_dir_theta, bins_phi))
 
 #sim_path = joinpath(ENV["WORK"], "geant4_pmt")
 #sim_path = "/home/chrhck/geant4_sims/P-OM photons 30 cm sphere/"
 sim_path = joinpath(ENV["WORK"], "geant4_pmt/30cm_sphere")
 
+bins_pos_theta = 0:0.1:1
+bins_dir_theta = 0:0.1:π
+bins_phi = 0:0.1:2*π
+
 files = glob("*.csv", sim_path)
 
-#df_list = []
+h_data = []
 @progress for f in files
-    df = DataFrame(CSV.File(f))
-    proc_df!(df[:, :], h_all, h_hit)
-    #push!(df_list, df)
+    df = DataFrame(CSV.File(f),)
+    push!(h_data, proc_df(df[:, :], bins_pos_theta, bins_dir_theta, bins_phi ))
 end
-#df = reduce(vcat, df_list)
+
+h_data = h_data[4:end]
+global_acc = [sum(h[2].weights) / sum(h[1].weights) for h in h_data]
+correction = global_acc ./ global_acc[end]
 
 
-h_ratio = h_hit.weights ./ h_all.weights
-h_ratio[h_all.weights .== 0] .= 0
+h_sel_corrected = [h[2].weights / co for (h, co) in zip(h_data, correction)]
+h_ratio = sum(h_sel_corrected) ./ sum([h[1].weights for h in h_data])
+h_ratio[.!isfinite.(h_ratio)] .= 0
 
-h_ratio_avg = mean(h_ratio, dims=[2, 3, 4])[:]
-stairs(bins_wl, [h_ratio_avg; h_ratio_avg[end]])
+wl_acc_x = [h[3] for h in h_data]
+perm = sortperm(wl_acc_x)
+wl_acc_x = wl_acc_x[perm]
+wl_acc_y = correction[perm]
 
+@show perm
 
-h_ratio_avg = mean(h_ratio, dims=[1, 3, 4])[:]
-stairs(bins_pos_theta, [h_ratio_avg; h_ratio_avg[end]])
+fname = joinpath(@__DIR__, "../assets/pmt_acc_3d.hd5")
+h5open(fname, "w") do fid
+    fid["pos_acceptance"] = h_ratio
+    attrs(fid)["bin_edges_x"] = JSON3.write(bins_pos_theta)
+    attrs(fid)["bin_edges_y"] = JSON3.write(bins_dir_theta)
+    attrs(fid)["bin_edges_z"] = JSON3.write(bins_phi)
 
+    fid["wl_acceptance_factor_x"] = wl_acc_x 
+    fid["wl_acceptance_factor_y"] = wl_acc_y
+end
 
-h_ratio_avg = mean(h_ratio, dims=[1, 2, 4])[:]
-stairs(bins_dir_theta, [h_ratio_avg; h_ratio_avg[end]])
-
-h_ratio_avg = mean(h_ratio, dims=[1, 2, 3])[:]
-stairs(bins_phi, [h_ratio_avg; h_ratio_avg[end]])
 
 
 axis_names = ["Wavelength (nm)", "Pos theta", "Dir theta", "Dir phi"]
@@ -165,49 +176,36 @@ for ((row, col), sum_dims) in zip(product(1:3, 1:3), all_sum_dims)
 end
 fig
 
-fname = joinpath(@__DIR__, "../assets/pmt_acc_3d.hd5")
-h5open(fname, "w") do fid
-    fid["pos_acceptance"] = dropdims(mean(h_ratio, dims=[1]), dims=1)
-    attrs(fid)["bin_edges_x"] = JSON3.write(bins_pos_theta)
-    attrs(fid)["bin_edges_y"] = JSON3.write(bins_dir_theta)
-    attrs(fid)["bin_edges_z"] = JSON3.write(bins_phi)
 
-    fid["wl_acceptance"] = dropdims(mean(h_ratio, dims=[2, 3, 4]), dims=(2, 3, 4))
-    attrs(fid)["bin_edges_wl"] = JSON3.write(bins_wl)
-end
 
 
 h5open(fname, "r") do fid
     h_ratio = fid["pos_acceptance"][:, :, :]
-    heatmap(h_ratio[:,5, :])
+    heatmap(h_ratio[1, :, :])
 end
 
 # Setup target
 targ_pos = SA_F64[0., 5., 20.]
-
 pmt_area = (75e-3 / 2)^2 * π
 target_radius = 0.21
 
-target = MultiPMTDetector(
-    targ_pos,
-    target_radius,
+shape = Spherical(Float32.(targ_pos), Float32(target_radius))
+
+PROJECT_ROOT = pkgdir(PhotonPropagation)
+df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv"), DataFrame, header=["wavelength", "acceptance"])
+acc_pmt_wl = linear_interpolation(df[:, :wavelength], df[:, :acceptance], extrapolation_bc=0.)
+
+
+target = SphericalMultiPMTDetector(
+    shape,
     pmt_area,
     make_pom_pmt_coordinates(Float64),
+    acc_pmt_wl,
     UInt16(1)
 )
 
-target = convert(MultiPMTDetector{Float32}, target)
 
-target_radius = 0.3
-target2 = POM(
-    targ_pos,
-    target_radius,
-    pmt_area,
-    make_pom_pmt_coordinates(Float64),
-    UInt16(1)
-)
-
-target2 = convert(POM{Float32}, target2)
+target2 = make_pone_module(targ_pos, UInt16(1))
 
 # Setup source
 position = SA_F32[0., 0., 0.]
@@ -236,6 +234,7 @@ photons = propagate_photons(setup)
 
 hits = make_hits_from_photons(photons, setup)
 hits2 = make_hits_from_photons(photons, setup2)
+
 
 
 combine(groupby(hits, :pmt_id), nrow)

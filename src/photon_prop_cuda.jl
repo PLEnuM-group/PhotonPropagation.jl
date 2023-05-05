@@ -226,9 +226,9 @@ end
 end
 
 
-@inline function check_intersection(::Spherical, target::PhotonTarget, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
-    target_pos = target.position
-    target_rsq = target.radius^2
+@inline function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+    target_pos = target_shape.position
+    target_rsq = target_shape.radius^2
 
     dpos = pos .- target_pos
 
@@ -266,7 +266,7 @@ end
 
 end
 
-@inline function check_intersection(::Rectangular, target::PhotonTarget, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+@inline function check_intersection(target_shape::Rectangular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
 
     dir_normal = dir[3]
 
@@ -274,13 +274,14 @@ end
         return false, NaN32
     end
 
-    d = (target.position[3] - pos[3]) / dir_normal
+    d = (target_shape.position[3] - pos[3]) / dir_normal
 
     if (d < 0) | (d > step_size)
         return false, NaN32
     end
 
-    isec = (abs((pos[1] + dir[1] * d) - target.position[1]) < target.length_x) & (abs((pos[2] + dir[2] * d) - target.position[2]) < target.length_y)
+    isec = ((abs((pos[1] + dir[1] * d) - target_shape.position[1]) < target_shape.length_x/2) &
+            (abs((pos[2] + dir[2] * d) - target_shape.position[2]) < target_shape.length_y/2))
 
     if isec
         return true, d
@@ -290,7 +291,7 @@ end
 
 end
 
-@inline function check_intersection(::Circular, target::PhotonTarget, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+@inline function check_intersection(target_shape::Circular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
 
     dir_normal = dir[3]
 
@@ -298,13 +299,13 @@ end
         return false, NaN32
     end
 
-    d = (target.position[3] - pos[3]) / dir_normal
+    d = (target_shape.position[3] - pos[3]) / dir_normal
 
     if (d < 0) | (d > step_size)
         return false, NaN32
     end
 
-    isec = ((pos[1] + dir[1] * d - target.position[1])^2 + (pos[2] + dir[2] * d - target.position[2])^2) < target.radius^2
+    isec = ((pos[1] + dir[1] * d - target_shape.position[1])^2 + (pos[2] + dir[2] * d - target_shape.position[2])^2) < target_shape.radius^2
 
     if isec
         return true, d
@@ -314,10 +315,6 @@ end
 
 end
 
-
-@inline function check_intersection(target::T, pos, dir, step_size) where {T<:PhotonTarget}
-    return check_intersection(geometry_type(T), target, pos, dir, step_size)
-end
 
 struct PhotonHit{T<:Real,U<:Real}
     position::SVector{3,T}
@@ -326,7 +323,7 @@ struct PhotonHit{T<:Real,U<:Real}
     wavelength::T
     time::U
     dist_travelled::T
-    module_id::UInt16
+    module_id::Int64
 end
 
 
@@ -338,7 +335,7 @@ function cuda_propagate_photons!(
     seed::Int64,
     source::PhotonSource,
     spectrum::Spectrum,
-    targets::CuDeviceVector{<:PhotonTarget},
+    targets::CuDeviceVector{<:TargetShape},
     medium::MediumProperties{T}) where {T}
 
     block = blockIdx().x
@@ -385,12 +382,12 @@ function cuda_propagate_photons!(
 
             isec = false
             dist_to_target = 0.0f0
-            module_id::UInt16 = 0
-            for target in targets
+            module_ix = 0
+            for (ix, target) in enumerate(targets)
                 isec, d = check_intersection(target, pos, dir, step_size)
 
                 if isec
-                    module_id = target.module_id
+                    module_ix = ix
                     dist_to_target = d
                     break
                 end
@@ -418,7 +415,7 @@ function cuda_propagate_photons!(
             out_hits.time[stack_idx] = time
             out_hits.wavelength[stack_idx] = wavelength
             out_hits.dist_travelled[stack_idx] = dist_travelled
-            out_hits.module_id[stack_idx] = module_id
+            out_hits.module_id[stack_idx] = module_ix
 
             break
         end
@@ -448,7 +445,7 @@ function cuda_propagate_photons!(
     seed::Int64,
     source::PhotonSource,
     spectrum::Spectrum,
-    target::PhotonTarget,
+    target::TargetShape,
     medium::MediumProperties{T}) where {T}
 
     block = blockIdx().x
@@ -616,7 +613,7 @@ end
 
 function run_photon_prop_no_local_cache(
     sources::AbstractVector{<:PhotonSource},
-    targets::AbstractVector{<:PhotonTarget},
+    targets::AbstractVector{<:TargetShape},
     medium::MediumProperties,
     spectrum::Spectrum,
     seed::Int64;

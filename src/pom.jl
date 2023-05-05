@@ -1,65 +1,62 @@
-export p_one_pmt_wl_acc, POM
+export POMAcceptance, POM
 using HDF5
 using StatsBase
 using JSON3
+using CSV
 
-
-
-struct POMPositionalAcceptance <: PositionalAcceptance
-    pos_acc::Array{Float64, 4}
-    wl_acc::Array{Float64, 1}
+struct POMAcceptance{I} <: PMTAcceptance
+    pos_acc::Array{Float64, 3}
     bin_edges_x::Vector{Float64}
     bin_edges_y::Vector{Float64}
     bin_edges_z::Vector{Float64}
-    bin_edges_wl::Vector{Float64}
+    pos_wl_acc::I
+    
 end
 
-function POMPositionalAcceptance(filename::String)
-    fid = h5open(filename, "r")
-    pos_acc = fid["pos_acceptance"][:, :, :, :]
+function POMAcceptance(pmt_acc_fname::String, pmt_wl_acc_fname::String)
+    fid = h5open(pmt_acc_fname, "r")
+    pos_acc = fid["pos_acceptance"][:, :, :]
     att = attrs(fid)
-    edges_x = JSON3.read(att["bin_edges_x"])
-    edges_y = JSON3.read(att["bin_edges_y"])
-    edges_z = JSON3.read(att["bin_edges_z"])
+    edges_x = Vector{Float64}(JSON3.read(att["bin_edges_x"]))
+    edges_y = Vector{Float64}(JSON3.read(att["bin_edges_y"]))
+    edges_z = Vector{Float64}(JSON3.read(att["bin_edges_z"]))
 
-    wl_acc = fid["wl_acceptance"][:]
-    wl_bins = JSON3.read(att["bin_edges_wl"])
+    wl_acc_x = fid["wl_acceptance_factor_x"][:]
+    wl_acc_y = fid["wl_acceptance_factor_y"][:]
     close(fid)
-    return POMPositionalAcceptance(pos_acc, wl_acc, edges_x, edges_y, edges_z, wl_bins)
+
+     
+    acc_glass = linear_interpolation(wl_acc_x, wl_acc_y, extrapolation_bc=0.)
+
+    df = CSV.read(pmt_wl_acc_fname, DataFrame, header=["wavelength", "acceptance"])
+    acc_pmt_wl = linear_interpolation(df[:, :wavelength], df[:, :acceptance], extrapolation_bc=0.)
+
+    total_acc = linear_interpolation(
+        df[:, :wavelength],
+        acc_glass.(df[:, :wavelength]) .* acc_pmt_wl.(df[:, :wavelength]),
+        extrapolation_bc=0.
+    )
+
+    return POMAcceptance(pos_acc, edges_x, edges_y, edges_z, total_acc)
 end
 
 
-struct POM{T<:Real,N,L} <: PixelatedTarget
-    position::SVector{3,T}
-    radius::T
-    pmt_area::T
-    pmt_coordinates::SMatrix{2,N,T,L}
+struct POM{T,N,L} <: PixelatedTarget{Spherical{T}}
+    shape::Spherical{T}
+    pmt_area::Float64
+    pmt_coordinates::SMatrix{2,N,Float64,L}
+    acceptance::POMAcceptance
     module_id::UInt16
-    positional_acceptan
+    
 end
 
-function Base.convert(::Type{POM{T}}, x::POM) where {T}
 
-    pos = T.(x.position)
-    radius = T(x.radius)
-    pmt_area = T(x.pmt_area)
-    pmt_coordinates = T.(x.pmt_coordinates)
 
-    return POM(pos, radius, pmt_area, pmt_coordinates, x.module_id)
-end
 
-geometry_type(::Type{<:POM}) = Spherical()
 get_pmt_count(::POM{T,N,L}) where {T,N,L} = N
 get_pmt_count(::Type{POM{T,N,L}}) where {T,N,L} = N
 
-area_acceptance(::SVector{3,<:Real}, ::POM) = 1
 
-JSON.lower(d::POM) = Dict(
-    "pos" => d.position,
-    "radius" => d.radius,
-    "pmt_area" => d.pmt_area,
-    "pmt_coordinates" => d.pmt_coordinates,
-    "module_id" => Int(d.module_id))
 
 function calc_relative_pmt_coords(rot_mat::AbstractMatrix, in_position::AbstractVector, in_direction::AbstractVector)
 
@@ -87,18 +84,20 @@ function calc_relative_pmt_coords(pmt_coords, in_position::AbstractMatrix, in_di
 end
 
 function check_pmt_hit(
-    hit_positions::AbstractVector{T},
-    hit_directions::AbstractVector{T},
-    hit_wavelengths::AbstractVector{T},
+    hit_positions::AbstractVector,
+    hit_directions::AbstractVector,
+    hit_wavelengths::AbstractVector,
+    prop_weight::AbstractVector,
     target::POM,
-    orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
+    orientation::Rotation{3,<:Real})
 
     pmt_positions = get_pmt_positions(target, orientation)
 
-    bins_x = p_one_pmt_acc.bin_edges_x
-    bins_y = p_one_pmt_acc.bin_edges_y
-    bins_z = p_one_pmt_acc.bin_edges_z
-    bins_wl = po
+    bins_x = target.acceptance.bin_edges_x
+    bins_y = target.acceptance.bin_edges_y
+    bins_z = target.acceptance.bin_edges_z
+    
+    wl_acceptance = target.acceptance.wl_acc.(hit_wavelengths)
 
     rot_mats = calc_rot_matrix.(pmt_positions, Ref([0, 0, 1]))
     prob_vec = zeros(get_pmt_count(target))
@@ -106,7 +105,7 @@ function check_pmt_hit(
     pmt_hit_ids = zeros(length(hit_positions))
 
     for (hit_id, (hit_pos, hit_dir)) in enumerate(zip(hit_positions, hit_directions))
-        rel_pos = (hit_pos .- target.position) ./ target.radius
+        rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
 
         # Calc hit fraction per PMT
         for (pmt_ix, rot_mat) in enumerate(rot_mats)
@@ -117,14 +116,14 @@ function check_pmt_hit(
             j = clamp(searchsortedlast(bins_y, pos_dir[3]), 1, length(bins_y)-1)
             k = clamp(searchsortedlast(bins_z, pos_dir[4]), 1, length(bins_z)-1)
 
-            prob_vec[pmt_ix] = p_one_pmt_acc.acc_hist[i, j, k]
+            prob_vec[pmt_ix] = target.acceptance.pos_acc[i, j, k] .* wl_acceptance[hit_id]
         end            
                
 
         no_hit = reduce(*, 1 .- prob_vec)
         hit_prob = 1 - no_hit
 
-        if rand() < hit_prob
+        if rand() < hit_prob * prop_weight[hit_id]
             w = ProbabilityWeights(prob_vec)
             pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
         end
@@ -133,7 +132,3 @@ function check_pmt_hit(
     return pmt_hit_ids
 
 end
-
-#p_one_pmt_acc = POMPositionalAcceptance(joinpath(PROJECT_ROOT, "assets/pmt_acc_3d.hd5"))
-df = CSV.read(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv",), DataFrame, header=["wavelength", "acceptance"])
-p_one_pmt_wl_acc = PMTWavelengthAcceptance(df[:, :wavelength], df[:, :acceptance])
