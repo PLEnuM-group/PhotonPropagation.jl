@@ -17,17 +17,21 @@ CUDA-accelerated Monte-Carlo simulation of photon transport in homogeneous media
 ```julia
 using PhotonPropagation
 using StaticArrays
+using PhysicsTools
+using CUDA
 
-# Setup target
-target = DetectionSphere(
-    SA[0., 0., 10.],
-    0.21,
-    1,
-    0.1,
-    UInt16(1))
+
+# Target Shape
+module_position = SA[0., 0., 10.]
+module_radius = 0.3
+active_area = 16 * π * (0.0762)^2
+shape = Spherical(module_position, module_radius)
 
 # convert to Float32 for fast computation on gpu
-target = convert(DetectionSphere{Float32}, target)
+shape = convert(Spherical{Float32}, shape)
+
+# Setup target
+target = HomogeneousDetector(shape, active_area, UInt16(1))
 
 # Setup source
 position = SA_F32[0., 0., 0.]
@@ -46,5 +50,5 @@ seed = 1
 setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 
 # Run propagation
-hits = propagate_photons(setup)
+photons = propagate_photons(setup)
 ```
