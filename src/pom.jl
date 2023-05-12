@@ -29,11 +29,11 @@ function POMAcceptance(pmt_acc_fname::String, pmt_wl_acc_fname::String)
     acc_glass = linear_interpolation(wl_acc_x, wl_acc_y, extrapolation_bc=0.)
 
     df = CSV.read(pmt_wl_acc_fname, DataFrame, header=["wavelength", "acceptance"])
-    acc_pmt_wl = linear_interpolation(df[:, :wavelength], df[:, :acceptance], extrapolation_bc=0.)
+    # acc_pmt_wl = linear_interpolation(df[:, :wavelength], df[:, :acceptance], extrapolation_bc=0.)
 
     total_acc = linear_interpolation(
         df[:, :wavelength],
-        acc_glass.(df[:, :wavelength]) .* acc_pmt_wl.(df[:, :wavelength]),
+        acc_glass.(df[:, :wavelength]), # .* acc_pmt_wl.(df[:, :wavelength]),
         extrapolation_bc=0.
     )
 
@@ -65,13 +65,15 @@ function calc_relative_pmt_coords(rot_mat::AbstractMatrix, in_position::Abstract
 
     in_pos_rot_rot_sph = cart_to_sph(in_pos_rot)
 
+
+
     # Calculate phi direction relative to glass position 
     # by rotating around e_z
     phi = cart_to_cyl(in_pos_rot)[2]
     Rs = AngleAxis.(-phi, 0, 0, 1)
     in_dir_rot_rel_ez_sph = cart_to_sph(Rs * in_dir_rot)
     
-    return hcat(in_pos_rot_rot_sph..., in_dir_rot_rel_ez_sph...)
+    return hcat(cos.(in_pos_rot_rot_sph[1]), in_pos_rot_rot_sph[2], cos(in_dir_rot_rel_ez_sph[1]), in_dir_rot_rel_ez_sph[2])
 
 end
 
@@ -97,14 +99,20 @@ function check_pmt_hit(
     bins_y = target.acceptance.bin_edges_y
     bins_z = target.acceptance.bin_edges_z
     
-    wl_acceptance = target.acceptance.wl_acc.(hit_wavelengths)
+    wl_acceptance = target.acceptance.pos_wl_acc.(hit_wavelengths)
 
     rot_mats = calc_rot_matrix.(pmt_positions, Ref([0, 0, 1]))
     prob_vec = zeros(get_pmt_count(target))
-
     pmt_hit_ids = zeros(length(hit_positions))
 
-    for (hit_id, (hit_pos, hit_dir)) in enumerate(zip(hit_positions, hit_directions))
+
+    @inbounds for (hit_id, (hit_pos, hit_dir)) in enumerate(zip(hit_positions, hit_directions))
+        
+        # Continue to next photon if this one doesn't survive propagation
+        if rand() > prop_weight[hit_id]
+            continue
+        end
+        
         rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
 
         # Calc hit fraction per PMT
@@ -118,12 +126,12 @@ function check_pmt_hit(
 
             prob_vec[pmt_ix] = target.acceptance.pos_acc[i, j, k] .* wl_acceptance[hit_id]
         end            
-               
+        
 
         no_hit = reduce(*, 1 .- prob_vec)
         hit_prob = 1 - no_hit
 
-        if rand() < hit_prob * prop_weight[hit_id]
+        if rand() < hit_prob
             w = ProbabilityWeights(prob_vec)
             pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
         end

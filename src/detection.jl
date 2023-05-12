@@ -183,7 +183,7 @@ function check_pmt_hit(
 
     wl_acc = target.wl_acceptance.(hit_wavelengths)
     
-    hits = rand(length(hit_positions)) .< wl_acc .* prop_weights
+    hits = rand(length(hit_positions)) .< (wl_acc .* prop_weights)
 
     pmt_positions = get_pmt_positions(target, orientation)
     pmt_radius = sqrt(target.pmt_area / π)
