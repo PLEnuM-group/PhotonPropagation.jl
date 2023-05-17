@@ -3,41 +3,46 @@ using HDF5
 using StatsBase
 using JSON3
 using CSV
+using MultivariateStats
+using StructTypes
 
 struct POMAcceptance{I} <: PMTAcceptance
-    pos_acc::Array{Float64, 3}
-    bin_edges_x::Vector{Float64}
-    bin_edges_y::Vector{Float64}
-    bin_edges_z::Vector{Float64}
-    pos_wl_acc::I
-    
+    pos_acc_grp_1::Array{Float64, 3}
+    pos_acc_grp_2::Array{Float64, 3}
+    PPCA_grp_1::PPCA{Float64}
+    PPCA_grp_2::PPCA{Float64}
+    bin_edges_1::Vector{Float64}
+    bin_edges_2::Vector{Float64}
+    pos_wl_acc::I    
 end
 
-function POMAcceptance(pmt_acc_fname::String, pmt_wl_acc_fname::String)
+StructTypes.StructType(::Type{PPCA}) = StructTypes.Struct()
+
+
+function POMAcceptance(pmt_acc_fname::String)
     fid = h5open(pmt_acc_fname, "r")
-    pos_acc = fid["pos_acceptance"][:, :, :]
+    pos_acc_1 = fid["acc_pmt_grp_1"][:, :]
+    pos_acc_2 = fid["acc_pmt_grp_2"][:, :]
     att = attrs(fid)
-    edges_x = Vector{Float64}(JSON3.read(att["bin_edges_x"]))
-    edges_y = Vector{Float64}(JSON3.read(att["bin_edges_y"]))
-    edges_z = Vector{Float64}(JSON3.read(att["bin_edges_z"]))
+    edges_x = Vector{Float64}(JSON3.read(att["bin_edges_1"]))
+    edges_y = Vector{Float64}(JSON3.read(att["bin_edges_2"]))
+    ppca_1 = PPCA{Float64}(JSON3.read(att["PPCA_grp_1"]))
+    ppca_2 = PPCA{Float64}(JSON3.read(att["PPCA_grp_2"]))
 
     wl_acc_x = fid["wl_acceptance_factor_x"][:]
     wl_acc_y = fid["wl_acceptance_factor_y"][:]
     close(fid)
-
      
-    acc_glass = linear_interpolation(wl_acc_x, wl_acc_y, extrapolation_bc=0.)
-
-    df = CSV.read(pmt_wl_acc_fname, DataFrame, header=["wavelength", "acceptance"])
-    # acc_pmt_wl = linear_interpolation(df[:, :wavelength], df[:, :acceptance], extrapolation_bc=0.)
-
-    total_acc = linear_interpolation(
-        df[:, :wavelength],
-        acc_glass.(df[:, :wavelength]), # .* acc_pmt_wl.(df[:, :wavelength]),
-        extrapolation_bc=0.
-    )
-
-    return POMAcceptance(pos_acc, edges_x, edges_y, edges_z, total_acc)
+    total_acc = linear_interpolation(wl_acc_x, wl_acc_y, extrapolation_bc=0.)
+   
+    return POMAcceptance(
+        pos_acc_1,
+        pos_acc_2,
+        ppca_1,
+        ppca_2,
+        edges_x,
+        edges_y,
+        total_acc)
 end
 
 
@@ -47,7 +52,7 @@ struct POM{T,N,L} <: PixelatedTarget{Spherical{T}}
     pmt_coordinates::SMatrix{2,N,Float64,L}
     acceptance::POMAcceptance
     module_id::UInt16
-    
+   
 end
 
 
@@ -58,32 +63,46 @@ get_pmt_count(::Type{POM{T,N,L}}) where {T,N,L} = N
 
 
 
-function calc_relative_pmt_coords(rot_mat::AbstractMatrix, in_position::AbstractVector, in_direction::AbstractVector)
+function calc_relative_pmt_coords(position::AbstractVector, direction::AbstractVector, pmt_coords_cart::AbstractVector)
+    pos_norm = position ./ norm(position)
+    rel_costheta = dot(pos_norm, pmt_coords_cart)
 
-    in_pos_rot = rot_mat * in_position
-    in_dir_rot = rot_mat * in_direction
+    in_pos_to_pmt = pmt_coords_cart .- pos_norm
 
-    in_pos_rot_rot_sph = cart_to_sph(in_pos_rot)
+    proj_pmt_in = in_pos_to_pmt .- (dot(in_pos_to_pmt, pos_norm) .* pos_norm)
+    proj_in_dir_inpo = direction .- ((dot(direction, pos_norm) .* pos_norm))
 
+    photon_dir_phi = acos((dot(proj_pmt_in, proj_in_dir_inpo) / (norm(proj_pmt_in) * norm(proj_in_dir_inpo))))
+    photon_dir_costheta  = (dot(.-pos_norm, direction))
 
+    return rel_costheta, photon_dir_costheta, sin(photon_dir_phi)
+end
 
-    # Calculate phi direction relative to glass position 
-    # by rotating around e_z
-    phi = cart_to_cyl(in_pos_rot)[2]
-    Rs = AngleAxis.(-phi, 0, 0, 1)
-    in_dir_rot_rel_ez_sph = cart_to_sph(Rs * in_dir_rot)
+function calc_relative_pmt_coords(position::AbstractMatrix, direction::AbstractMatrix, pmt_coords_cart::AbstractVector)
+
+    pts = Vector{Float64}(undef, size(position, 1))
+    dts = Vector{Float64}(undef, size(position, 1))
+    dps = Vector{Float64}(undef, size(position, 1))
+
+    @inbounds for (i, (ipcr, ipr)) in enumerate(zip(eachrow(position), eachrow(direction)))
     
-    return hcat(cos.(in_pos_rot_rot_sph[1]), in_pos_rot_rot_sph[2], cos(in_dir_rot_rel_ez_sph[1]), in_dir_rot_rel_ez_sph[2])
+        pt, dt, dp = calc_relative_pmt_coords(ipcr, ipr, pmt_coords_cart)
+        pts[i] = pt
+        dts[i] = dt
+        dps[i] = dp
+    end
+
+    return pts, dts, dps
+end
+
+function get_pom_pmt_group(pmt_ix)
+    # pmt_groups = [vcat(1:4, 10:13), vcat(5:9, 13:16)]
+    pmt_group = [1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2]
+
+    return pmt_group[pmt_ix]
 
 end
 
-function calc_relative_pmt_coords(pmt_coords, in_position::AbstractMatrix, in_direction::AbstractMatrix)
-
-    # Rotate pmt to e_z
-    R = calc_rot_matrix(pmt_coords, [0, 0, 1])
-
-    return calc_relative_pmt_coords.(Ref(R), eachrow(in_position), eachrow(in_direction))
-end
 
 function check_pmt_hit(
     hit_positions::AbstractVector,
@@ -93,17 +112,18 @@ function check_pmt_hit(
     target::POM,
     orientation::Rotation{3,<:Real})
 
+
     pmt_positions = get_pmt_positions(target, orientation)
 
     bins_x = target.acceptance.bin_edges_x
     bins_y = target.acceptance.bin_edges_y
-    bins_z = target.acceptance.bin_edges_z
     
     wl_acceptance = target.acceptance.pos_wl_acc.(hit_wavelengths)
 
-    rot_mats = calc_rot_matrix.(pmt_positions, Ref([0, 0, 1]))
     prob_vec = zeros(get_pmt_count(target))
     pmt_hit_ids = zeros(length(hit_positions))
+
+    ppcas = [target.acceptance.PPCA_grp_1, target.acceptance.PPCA_grp_2]
 
 
     @inbounds for (hit_id, (hit_pos, hit_dir)) in enumerate(zip(hit_positions, hit_directions))
@@ -116,18 +136,19 @@ function check_pmt_hit(
         rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
 
         # Calc hit fraction per PMT
-        for (pmt_ix, rot_mat) in enumerate(rot_mats)
+        for (pmt_ix, pmt_pos) in enumerate(pmt_positions)
     
-            pos_dir = calc_relative_pmt_coords(rot_mat, rel_pos, hit_dir)
+            pmt_grp = get_pom_pmt_group(pmt_ix)
 
-            i = clamp(searchsortedlast(bins_x, pos_dir[1]), 1, length(bins_x)-1)
-            j = clamp(searchsortedlast(bins_y, pos_dir[3]), 1, length(bins_y)-1)
-            k = clamp(searchsortedlast(bins_z, pos_dir[4]), 1, length(bins_z)-1)
+            pos_dir = hcat(calc_relative_pmt_coords(rel_pos, hit_dir, pmt_pos)...)
+            pos_dir_traf = predict(ppcas[pmt_grp], pos_dir')
 
-            prob_vec[pmt_ix] = target.acceptance.pos_acc[i, j, k] .* wl_acceptance[hit_id]
+            i = clamp(searchsortedlast(bins_x, pos_dir_traf[1]), 1, length(bins_x)-1)
+            j = clamp(searchsortedlast(bins_y, pos_dir_traf[2]), 1, length(bins_y)-1)
+
+            prob_vec[pmt_ix] = target.acceptance.pos_acc[i, j] .* wl_acceptance[hit_id]
         end            
         
-
         no_hit = reduce(*, 1 .- prob_vec)
         hit_prob = 1 - no_hit
 

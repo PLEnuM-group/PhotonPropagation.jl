@@ -17,13 +17,12 @@ using BenchmarkTools
 using HDF5
 using Interpolations
 using Distributions
-using JSON3
 using PhysicalConstants.CODATA2018
 using Unitful
-using EvoTrees
-using CategoricalArrays
 using Base.Iterators
 using Random
+using Cthulhu
+using JSON3
 import PhotonPropagation.Detection: calc_relative_pmt_coords
 
 begin
@@ -47,7 +46,7 @@ end
 
 
 function calc_coordinates!(df)
-    pos_in = Matrix(df[:, ["in_x", "in_y", "in_z"]])
+    pos_in = Matrix{Float64}(df[:, ["in_x", "in_y", "in_z"]])
     norm_in = norm.(eachrow(pos_in))
     pos_in_normed = pos_in ./ norm_in
    
@@ -60,7 +59,7 @@ function calc_coordinates!(df)
     df[!, :in_costheta] .= cos.(in_pos_sph[1, :])
     df[!, :in_phi] .= in_pos_sph[2, :]
 
-    in_p_cart = Matrix((df[:, [:in_px, :in_py, :in_pz]]))
+    in_p_cart = Matrix{Float64}((df[:, [:in_px, :in_py, :in_pz]]))
 
     norm_p = norm.(eachrow(in_p_cart))
     in_p_cart_norm = in_p_cart ./ norm_p
@@ -77,70 +76,145 @@ end
 
 
 
-function calc_rel_pos(df, pmt_coords_cart)
+function Detection.calc_relative_pmt_coords(df, pmt_coords_cart)
 
-    in_pos_cart_norm = Matrix(df[!, [:in_norm_x, :in_norm_y, :in_norm_z]])
-    in_p_cart = Matrix(df[!, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]])
+    in_pos_cart_norm = Matrix{Float64}(df[!, [:in_norm_x, :in_norm_y, :in_norm_z]])
+    in_p_cart = Matrix{Float64}(df[!, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]])
 
-
-    rel_costheta = dot.(eachrow(in_pos_cart_norm), Ref(pmt_coords_cart))
-    in_pos_to_pmt = Ref(pmt_coords_cart) .- eachrow(in_pos_cart_norm)
-
-    proj_pmt_in = in_pos_to_pmt .- eachrow((dot.(in_pos_to_pmt, eachrow(in_pos_cart_norm)) .* in_pos_cart_norm))
-    proj_in_dir_inpo = eachrow(in_p_cart) .- eachrow((dot.(eachrow(in_p_cart), eachrow(in_pos_cart_norm)) .* in_pos_cart_norm))
-
-    photon_dir_phi = acos.(dot.(proj_pmt_in, proj_in_dir_inpo) ./(norm.(proj_pmt_in) .* norm.(proj_in_dir_inpo)))
-    photon_dir_theta  = acos.(dot.(.-eachrow(in_pos_cart_norm), eachrow(in_p_cart)))
-
-    return rel_costheta, photon_dir_theta, photon_dir_phi
+    return Detection.calc_relative_pmt_coords(in_pos_cart_norm, in_p_cart, pmt_coords_cart)
 
 end
-#function proc_df_new(df)
 
-function proc_df(df, bins_pos_theta, bins_dir_theta, bins_phi)
-       
-    #pos_glas = Matrix(df[:, ["1_x", "1_y", "1_z"]])
-   
-    calc_glas_pos!(df)
 
-    df[!, :wavelength] .= round.(ustrip(u"nm", PlanckConstant * SpeedOfLightInVacuum ./ ( df[1, :in_E]u"eV")))
+function get_hit_coords(df, pmt_coords_cart, pmt_ix)
+    pt, dt, dp = calc_relative_pmt_coords(df, pmt_coords_cart[:, pmt_ix])
+    
+    hit_pmt::BitVector = (
+        (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
+        df[:, :out_Volume_CopyNo] .== (pmt_ix-1) .&& 
+        df[:, :out_ProcessName] .== "OpAbsorption"
+    )
 
-    in_dir = Matrix(df[:, [:in_px, :in_py, :in_pz]])
-    in_pos = Matrix(df[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]])
+    return DataFrame(pt=(pt[hit_pmt]), dt=dt[hit_pmt], dp=dp[hit_pmt])
+end
 
-     
-    h_all = StatsBase.fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
-    h_hit = StatsBase.fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
+function filter_outlier(df)
+    return df[(df[!, "pt"] .> 0.65) .&& (df[!, "dt"] .> 0.6), :]
+end
 
-    #all_pos_dir_hit = []
-    for (pmt_ix, pmt_coords_sph) in enumerate(eachcol(coords))
-        copy_no = pmt_ix - 1
 
-        pmt_vec = sph_to_cart(pmt_coords_sph)
+function fit_pca(fnames, pmt_coords_cart)
+    dfs_hi = DataFrame[]
+    dfs_low = DataFrame[]
 
-        sel = (
-            (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
-            df[:, :out_Volume_CopyNo] .== copy_no .&& 
-            df[:, :out_ProcessName] .== "OpAbsorption"
-            )
+    pmt_groups = [vcat(1:4, 10:13), vcat(5:9, 13:16)]
 
-        sel_all = Colon()
-       
-        pos_dir = reduce(vcat, calc_relative_pmt_coords(pmt_vec, in_pos, in_dir))
-        pos_dir_hit_pmt = pos_dir[sel, :]
-        pos_dir_hit = pos_dir[sel_all, :]
-
-        h_all_i = StatsBase.fit(Histogram, (pos_dir_hit[:, 1], (pos_dir_hit[:, 3]), pos_dir_hit[:, 4]), (bins_pos_theta, bins_dir_theta, bins_phi))
-        h_hit_i = StatsBase.fit(Histogram, (pos_dir_hit_pmt[:, 1], (pos_dir_hit_pmt[:, 3]), pos_dir_hit_pmt[:, 4]), (bins_pos_theta, bins_dir_theta, bins_phi))
-
-        h_all = merge(h_all, h_all_i)
-        h_hit = merge(h_hit, h_hit_i)
+    for fname in fnames
+        df = DataFrame(CSV.File(fname))
+        calc_coordinates!(df)
+        
+        combined = mapreduce(
+            pmt_ix -> get_hit_coords(df, pmt_coords_cart, pmt_ix),
+            vcat,
+            pmt_groups[1])
+        push!(dfs_hi, filter_outlier(combined))
+        
+        combined = mapreduce(
+            pmt_ix -> get_hit_coords(df, pmt_coords_cart, pmt_ix),
+            vcat,
+            pmt_groups[2])
+        push!(dfs_low, filter_outlier(combined))
 
     end
-  
-    return h_all, h_hit, df[1, :wavelength]
-
+    
+    vals_hi = Matrix(reduce(vcat, dfs_hi))'
+    vals_low = Matrix(reduce(vcat, dfs_low))'
+    
+    M_hi = fit(PPCA, vals_hi, method=:em)
+    M_low = fit(PPCA, vals_low, method=:em)
+    
+    return M_hi, M_low
 end
+
+function _apply_traf(pca, df, pmt_coords_cart, pmt_ixs)
+    all_Y = []
+    all_Y_hit = []
+    for pmt_ix in pmt_ixs
+        hit_pmt = (
+            (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
+            df[:, :out_Volume_CopyNo] .== (pmt_ix-1) .&& 
+            df[:, :out_ProcessName] .== "OpAbsorption"
+        )
+
+        rel_coords = hcat(calc_relative_pmt_coords(df, pmt_coords_cart[:, pmt_ix])...)
+        Y = predict(pca, rel_coords')
+        Y_hit = Y[:, hit_pmt]
+        push!(all_Y, Y)
+        push!(all_Y_hit, Y_hit)
+    end
+    all_Y = reduce(hcat, all_Y)
+    all_Y_hit = reduce(hcat, all_Y_hit)
+
+    return all_Y, all_Y_hit
+end
+
+
+function make_acceptance_hists(files, pcas, pmt_coords_cart)
+    bins_1 = -2.5:0.2:2.2
+    bins_2 = -3:0.2:2
+    
+    pmt_groups = [vcat(1:4, 10:13), vcat(5:9, 13:16)]
+
+    wavelengths = Float64[]
+    acceptances = Float64[]
+
+    histograms_all = Dict{Int64, Vector{Histogram}}()
+    histograms_hit = Dict{Int64, Vector{Histogram}}()
+
+    for (i, _) in enumerate(pmt_groups)
+        histograms_all[i] = Vector{Histogram}(undef, length(files))
+        histograms_hit[i] = Vector{Histogram}(undef, length(files))
+    end
+    
+    for (fix, fname) in enumerate(files)
+        df = DataFrame(CSV.File(fname))
+        calc_coordinates!(df)
+    
+        for (grp_ix, pmt_grp) in enumerate(pmt_groups)
+            all_Y, all_Y_hit = _apply_traf(pcas[grp_ix], df, pmt_coords_cart, pmt_grp)
+            histograms_all[grp_ix][fix] = StatsBase.fit(Histogram, (all_Y[1, :], all_Y[2, :] ), (bins_1, bins_2))
+            histograms_hit[grp_ix][fix] = StatsBase.fit(Histogram, (all_Y_hit[1, :], all_Y_hit[2, :] ), (bins_1, bins_2))
+        end
+
+        hit_pmt::BitVector = (
+            (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
+            df[:, :out_ProcessName] .== "OpAbsorption"
+        )
+
+        total_acceptance = sum(hit_pmt) / nrow(df)
+        wl = round(ustrip(u"nm", PlanckConstant * SpeedOfLightInVacuum ./ ( df[1, :in_E]u"eV")))
+        push!(wavelengths, wl)
+        push!(acceptances, total_acceptance)
+        
+    end
+
+    function _calc_ratios(h_hit, h_all, acc)
+        h_hit_all = sum([h.weights ./ a for (h, a) in zip(h_hit, acc)])
+        h_all_all = sum([h.weights for h in h_all])
+        hr = h_hit_all ./ h_all_all
+        hr[h_all_all .== 0] .= 0        
+        return hr    
+    end
+
+  
+    hist_ratios = Dict{Int64, Matrix{Float64}}()
+    for grp_ix in keys(histograms_all)
+        hist_ratios[grp_ix] = _calc_ratios(histograms_hit[grp_ix], histograms_all[grp_ix], acceptances)
+    end
+    
+    return hist_ratios, wavelengths, acceptances
+end
+
 
 
 
@@ -148,251 +222,32 @@ end
 #sim_path = "/home/chrhck/geant4_sims/P-OM photons 30 cm sphere/"
 sim_path = joinpath(ENV["WORK"], "geant4_pmt/30cm_sphere")
 files = glob("*.csv", sim_path)
+coords_cart = reduce(hcat, sph_to_cart.(eachcol(coords)))
 
-df = DataFrame(CSV.File(files[end],))
-calc_coordinates!(df)
+pcas = fit_pca(files, coords_cart)
+hist_ratios, wavelengths, acceptances = make_acceptance_hists(files[5:end], pcas, coords_cart)
 
+bins_1 = -2.5:0.2:2.2
+bins_2 = -3:0.2:2
 
-function get_hit_coords(df, pmt_ix)
-    pmt_coords_sph = coords[:, pmt_ix]
-    pmt_coords_cart = sph_to_cart(pmt_coords_sph)
-    pt, dt, dp = calc_rel_pos(df, pmt_coords_cart)
-    
-    hit_pmt = (
-        (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
-        df[:, :out_Volume_CopyNo] .== (pmt_ix-1) .&& 
-        df[:, :out_ProcessName] .== "OpAbsorption"
-    )
-
-    return DataFrame(pt=acos.(pt[hit_pmt]), dt=dt[hit_pmt], dp=dp[hit_pmt])
-end
-
-function get_hit_prob(df, pmt_ix)
-    pmt_coords_sph = coords[:, pmt_ix]
-    pmt_coords_cart = sph_to_cart(pmt_coords_sph)
-    pt, dt, dp = calc_rel_pos(df, pmt_coords_cart)
-    
-    hit_pmt = (
-        (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
-        df[:, :out_Volume_CopyNo] .== (pmt_ix-1) .&& 
-        df[:, :out_ProcessName] .== "OpAbsorption"
-    )
-
-    sel_all = Colon()
-
-    return DataFrame(pt=acos.(pt[hit_pmt]), dt=dt[hit_pmt], dp=dp[hit_pmt])
-end
-
-
-pmt_groups = [vcat(1:4, 10:13), vcat(5:9, 13:16)]
-per_group = []
-for grp in pmt_groups
-    dfs = []
-    for pmt_ix in grp
-        push!(dfs, get_hit_coords(df, pmt_ix))
-    end
-    combined = reduce(vcat, dfs)
-    push!(per_group, combined)
-
-    h_all = StatsBase.fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
-    h_hit = StatsBase.fit(Histogram, ([], [], []), (bins_pos_theta, bins_dir_theta, bins_phi))
-
-
-end
-
-pairplot(per_group...)
-
-t1 =  get_hit_coords(df, 1)
-t2 =  get_hit_coords(df, 5)
-t3 =  get_hit_coords(df, 9)
-t4 =  get_hit_coords(df, 13)
-
-
-pairplot(t1,  t3)#, t4)
-
-
-
-df[!, :pos_rel_costheta] .= rel_costheta
-df[!, :dir_rel_phi] .= photon_dir_phi
-df[!, :dir_rel_theta] .= photon_dir_theta
-
-
-
-
-
-#=
-hit_pmt = (
-    (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
-    # df[:, :out_Volume_CopyNo] .== 0 .&& 
-    df[:, :out_ProcessName] .== "OpAbsorption"
-)
-=#
-hit_pmt_ix = zeros(nrow(df))
-hit_pmt_ix[hit_pmt] .= df[hit_pmt, :out_Volume_CopyNo] .+ 1
-
-df[!, :pmt_ix] .= hit_pmt_ix
-df[!, :class] = categorical(hit_pmt_ix, levels=0:16)
-df[!, :hit] .= hit_pmt
-
-df_balanced = df
-
-train_ratio = 0.8
-train_indices = randperm(nrow(df_balanced))[1:Int(train_ratio * nrow(df_balanced))]
-
-features = [:pos_rel_costheta,  :dir_rel_phi, :dir_rel_theta, :in_x, :in_y, :in_z, :in_px, :in_py, :in_pz]
-
-train_data = df_balanced[train_indices, :]
-eval_data = df_balanced[setdiff(1:nrow(df_balanced), train_indices), :]
-
-x_train, y_train = Matrix(train_data[:, features]), train_data[:, :hit]
-x_eval, y_eval = Matrix(eval_data[:, features]), eval_data[:, :hit]
-
-
-hexbin(df[df[!, :hit], :pos_rel_costheta], df[df[!, :hit], :dir_rel_theta])
-hexbin(df[df[!, :hit], :dir_rel_phi], df[df[!, :hit], :dir_rel_theta])
-
-
-
-config = EvoTreeRegressor(
-    loss=:logistic,
-    nrounds=2000,
-    eta=0.5,
-    max_depth=5,
-    lambda=0.4,
-    rowsample = 0.8,
-    nbins=64,
-    T=Float64,
-    device="cpu")
-
-model = fit_evotree(config;
-    x_train=x_train, y_train=y_train,# w_train=w_train,
-    x_eval=x_eval, y_eval=y_eval,
-    early_stopping_rounds=10,
-    metric = :logloss,
-    print_every_n=10)
-
-pred_train = model(x_train)
-pred_eval = model(x_eval)
-
-hist(pred_train)
-
-mean((pred_train .> 0.5) .== y_train)
-mean((pred_eval .> 0.5) .== y_eval)
-
-mask = y_eval
-
-hist(pred_train[y_train])
-hist(pred_eval[y_eval])
-
-
-pred_train
-
-
-mean((pred_train .> 0.5) .== y_train)
-mean((pred_eval .> 0.5) .== y_eval)
-y_train
-pred_eval .> 0.5
-
-(pred_train .> 0.5)
-
-mean(idx_eval .== levelcode.(y_eval))
-mean(idx_train .== levelcode.(y_train))
-
-
-bins_pos_theta = -1:0.1:1
-bins_dir_theta = -1:0.1:1
-bins_phi = 0:0.2:2*π
-
-
-
-in
-
-
-
-
-calc_glas_pos!(df)
-flange_thickness = 90
-df[!, :g_z] = df[:, :g_z] - flange_thickness/2 * sign.(df[:, :g_z])
-
-
-in_dir = Matrix(df[:, [:in_px, :in_py, :in_pz]])
-in_pos = Matrix(df[:, [:glass_norm_x, :glass_norm_y, :glass_norm_z]])
-
-pos_glas = Matrix(df[:, ["g_x", "g_y", "g_z"]])
-
-norm_glass = norm.(eachrow(pos_glas))
-
-norm_glass .!== 0
-pos_glas_normed = pos_glas ./ norm_glass
-opening_angle = deg2rad(14) # asin(75e-3 / 2 / 0.3)
-
-for (pmt_ix, pmt_coords_sph) in enumerate(eachcol(coords))
-    copy_no = pmt_ix - 1
-
-    pmt_vec = sph_to_cart(pmt_coords_sph)
-
-    sel = (
-        (df[:, :out_VolumeName] .== "photocathode" .|| df[:, :out_VolumeName] .== "photocathodeTube") .&&
-        df[:, :out_Volume_CopyNo] .== copy_no .&& 
-        df[:, :out_ProcessName] .== "OpAbsorption"
-        )
-
-    glas_sel = (norm_glass .> 0) .&&  (acos.(dot.(eachrow(pos_glas_normed), Ref(pmt_vec))) .< opening_angle)
-
-    @show pmt_ix sum(glas_sel .&& sel) / sum(glas_sel)
-end
-
-
-h_data = []
-@progress for f in files
-    df = DataFrame(CSV.File(f),)
-    push!(h_data, proc_df(df[:, :], bins_pos_theta, bins_dir_theta, bins_phi ))
-end
-
-
-wl_sort = sortperm([h[3] for h in h_data])
-h_data = h_data[wl_sort]
-
-# Remove WL with low statistics
-h_data = h_data[4:end]
-
-# Total acceptance
-global_acc = [sum(h[2].weights) / sum(h[1].weights) for h in h_data]
-# Correction is the ratio of total hit probability relative to last wavelength
-correction = global_acc ./ global_acc[end]
-
-lines(global_acc)
-
-h_sel_corrected = [h[2].weights / co for (h, co) in zip(h_data, correction)]
-h_ratio = sum(h_sel_corrected) ./ sum([h[1].weights for h in h_data])
-h_ratio[.!isfinite.(h_ratio)] .= 0
-
-
-wl_acc_x = [h[3] for h in h_data]
-wl_acc_y = correction
-
-fname = joinpath(@__DIR__, "../assets/pmt_acc_3d.hd5")
+fname = joinpath(@__DIR__, "../assets/pmt_acc_2d_pca.hd5")
 h5open(fname, "w") do fid
-    fid["pos_acceptance"] = h_ratio
-    attrs(fid)["bin_edges_x"] = JSON3.write(bins_pos_theta)
-    attrs(fid)["bin_edges_y"] = JSON3.write(bins_dir_theta)
-    attrs(fid)["bin_edges_z"] = JSON3.write(bins_phi)
+    fid["acc_pmt_grp_1"] = hist_ratios[1]
+    fid["acc_pmt_grp_2"] = hist_ratios[2]
 
-    fid["wl_acceptance_factor_x"] = wl_acc_x 
-    fid["wl_acceptance_factor_y"] = wl_acc_y
+    attrs(fid)["PPCA_grp_1"] = JSON3.write(pcas[1])
+    attrs(fid)["PPCA_grp_2"] = JSON3.write(pcas[2])
+
+    attrs(fid)["bin_edges_1"] = JSON3.write(bins_1)
+    attrs(fid)["bin_edges_2"] = JSON3.write(bins_2)
+
+
+    fid["wl_acceptance_factor_x"] = wavelengths 
+    fid["wl_acceptance_factor_y"] = acceptances
 end
-
-
-
-
-
-
-
 
 h5open(fname, "r") do fid
-    h_ratio = fid["pos_acceptance"][:, :, :]
-    maxix = argmax(h_ratio)
-    heatmap(h_ratio[end-1, :, :])
+    @show keys(attrs(fid))
 end
 
 
