@@ -2,6 +2,7 @@ using PhotonPropagation
 using StaticArrays
 using PhysicsTools
 using CUDA
+using JSON3
 
 
 # Target Shape
@@ -20,6 +21,7 @@ target = HomogeneousDetector(shape, active_area, UInt16(1))
 # Setup source
 position = SA_F32[0., 0., 0.]
 source = PointlikeIsotropicEmitter(position, 0f0, 100000)
+
 
 # Setup medium
 mean_sca_angle = 0.99f0

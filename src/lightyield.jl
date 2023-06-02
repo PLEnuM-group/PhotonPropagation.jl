@@ -23,8 +23,8 @@ using Unitful
 using PoissonRandom
 using Interpolations
 using PoissonRandom
-using JSON
 using PhysicsTools
+using StructTypes
 
 using ..Spectral
 using ..Medium
@@ -142,6 +142,8 @@ See: https://arxiv.org/pdf/1210.5140.pdf
     b::Float64
 end
 
+StructTypes.StructType(::Type{<:LongitudinalParametersBase}) = StructTypes.Struct()
+
 const LongitudinalParametersEMinus = LongitudinalParametersBase(alpha=2.01849, beta=1.45469, b=0.63207)
 const LongitudinalParametersEPlus = LongitudinalParametersBase(alpha=2.00035, beta=1.45501, b=0.63008)
 const LongitudinalParametersGamma = LongitudinalParametersBase(alpha=2.83923, beta=1.34031, b=0.64526)
@@ -171,7 +173,7 @@ Struct for storing the energy-corrected values of the longitudinal Cherenkov lig
     lrad::T
 end
 
-JSON.lower(p::LongitudinalParameterisation) = [p.a, p.b, p.lrad]
+StructTypes.StructType(::Type{<:LongitudinalParameterisation}) = StructTypes.Struct()
 
 """
     LongitudinalParameterisation(energy, medium::MediumProperties, ::Type{ptype})
@@ -199,6 +201,8 @@ See: https://arxiv.org/pdf/1210.5140.pdf
     alpha_dev::Float64 # cm
     beta_dev::Float64
 end
+
+StructTypes.StructType(::Type{CherenkovTrackLengthParameters}) = StructTypes.Struct()
 
 const CherenkovTrackLengthParametersEMinus = CherenkovTrackLengthParameters(
     alpha=5.3207078881,
@@ -232,6 +236,8 @@ Struct for holding both the longitudinal and the track length parametrisation
     longitudinal::LongitudinalParametersBase
     track_length::CherenkovTrackLengthParameters
 end
+
+StructTypes.StructType(::Type{LightyieldParametrisation}) = StructTypes.Struct()
 
 
 """
@@ -492,6 +498,8 @@ struct AxiconeEmitter{T} <: PhotonSource{T}
     angle::T
 end
 
+StructTypes.StructType(::Type{<:AxiconeEmitter}) = StructTypes.Struct()
+
 struct PencilEmitter{T} <: PhotonSource{T}
     position::SVector{3,T}
     direction::SVector{3,T}
@@ -501,18 +509,16 @@ struct PencilEmitter{T} <: PhotonSource{T}
 
 end
 
+StructTypes.StructType(::Type{<:PencilEmitter}) = StructTypes.Struct()
+
 struct PointlikeIsotropicEmitter{T} <: PhotonSource{T}
     position::SVector{3,T}
     time::T
     photons::Int64
 end
 
+StructTypes.StructType(::Type{<:PointlikeIsotropicEmitter}) = StructTypes.Struct()
 
-JSON.lower(e::PointlikeIsotropicEmitter) = Dict(
-    "position" => e.position,
-    "time" => e.time,
-    "photons" => e.photons,
-)
 
 struct PointlikeTimeRangeEmitter{T,U} <: PhotonSource{T}
     position::SVector{3,T}
@@ -520,11 +526,8 @@ struct PointlikeTimeRangeEmitter{T,U} <: PhotonSource{T}
     photons::Int64
 end
 
-JSON.lower(e::PointlikeTimeRangeEmitter) = Dict(
-    "position" => e.position,
-    "time_range" => e.time_range,
-    "photons" => e.photons,
-)
+
+StructTypes.StructType(::Type{<:PointlikeTimeRangeEmitter}) = StructTypes.Struct()
 
 abstract type CherenkovEmitter{T} <: PhotonSource{T} end
 
@@ -535,6 +538,9 @@ struct ExtendedCherenkovEmitter{T} <: CherenkovEmitter{T}
     photons::Int64
     long_param::LongitudinalParameterisation{T}
 end
+
+StructTypes.StructType(::Type{<:ExtendedCherenkovEmitter}) = StructTypes.Struct()
+
 
 function ExtendedCherenkovEmitter(
     particle::Particle,
@@ -549,20 +555,14 @@ function ExtendedCherenkovEmitter(
     ExtendedCherenkovEmitter(particle.position, particle.direction, particle.time, photons, long_param)
 end
 
-JSON.lower(e::ExtendedCherenkovEmitter) = Dict(
-    "position" => e.position,
-    "direction" => e.direction,
-    "time" => e.time,
-    "photons" => e.photons,
-    "long_param" => e.long_param,
-)
-
 struct PointlikeCherenkovEmitter{T} <: CherenkovEmitter{T}
     position::SVector{3,T}
     direction::SVector{3,T}
     time::T
     photons::Int64
 end
+
+StructTypes.StructType(::Type{<:PointlikeCherenkovEmitter}) = StructTypes.Struct()
 
 function PointlikeCherenkovEmitter(
     particle::Particle,
@@ -577,14 +577,6 @@ function PointlikeCherenkovEmitter(particle::Particle, photons::Integer)
     PointlikeCherenkovEmitter(particle.position, particle.direction, particle.time, photons)
 end
 
-JSON.lower(e::PointlikeCherenkovEmitter) = Dict(
-    "position" => e.position,
-    "direction" => e.direction,
-    "time" => e.time,
-    "photons" => e.photons,
-)
-
-
 struct CherenkovTrackEmitter{T} <: CherenkovEmitter{T}
     position::SVector{3,T}
     direction::SVector{3,T}
@@ -592,6 +584,8 @@ struct CherenkovTrackEmitter{T} <: CherenkovEmitter{T}
     length::T
     photons::Int64
 end
+
+StructTypes.StructType(::Type{<:CherenkovTrackEmitter}) = StructTypes.Struct()
 
 function CherenkovTrackEmitter(particle::Particle{T}, medium::MediumProperties, wl_range::Tuple{T,T}) where {T<:Real}
     n_photons = pois_rand(total_lightyield(particle, medium, wl_range))

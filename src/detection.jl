@@ -6,7 +6,7 @@ using Interpolations
 using LinearAlgebra
 using Base.Iterators
 using Rotations
-
+using StructTypes
 using PhysicsTools
 
 export geometry_type, TargetShape, Spherical, Rectangular, Circular
@@ -44,6 +44,8 @@ end
 
 surface_area(s::Spherical) = 4*π*s.radius^2
 
+StructTypes.StructType(::Type{<:Spherical}) = StructTypes.Struct()
+
 """
     Rectangular{T <: Real} <: TargetShape
 
@@ -63,6 +65,8 @@ end
 
 surface_area(s::Rectangular) = s.length_x * s.length_y
 
+StructTypes.StructType(::Type{<:Rectangular}) = StructTypes.Struct()
+
 """
     Circular{T <: Real} <: TargetShape
 
@@ -80,6 +84,8 @@ end
 
 surface_area(s::Circular) = π * s.radius^2
 
+StructTypes.StructType(::Type{<:Circular}) = StructTypes.Struct()
+
 function Base.convert(::Type{Spherical{T}}, x::Spherical) where {T}
     return Spherical(T.(x.position), T(x.radius))
 end
@@ -91,7 +97,6 @@ end
 function Base.convert(::Type{Circular{T}}, x::Circular) where {T}
     return Circular(T.(x.position), T(x.radius))
 end
-
 
 
 
@@ -107,6 +112,8 @@ struct HomogeneousDetector{TS <: TargetShape} <: PhotonTarget{TS}
     module_id::UInt16
 end
 
+StructTypes.StructType(::Type{<:HomogeneousDetector}) = StructTypes.Struct()
+
 struct SphericalMultiPMTDetector{N,L,T,  I} <: PixelatedTarget{Spherical{T}}
     shape::Spherical{T}
     pmt_area::Float64
@@ -115,6 +122,8 @@ struct SphericalMultiPMTDetector{N,L,T,  I} <: PixelatedTarget{Spherical{T}}
     module_id::UInt16
     
 end
+
+StructTypes.StructType(::Type{<:SphericalMultiPMTDetector}) = StructTypes.Struct()
 
 get_pmt_count(::HomogeneousDetector) = 1
 get_pmt_count(::SphericalMultiPMTDetector{N,L}) where {N,L} = N
@@ -147,7 +156,6 @@ function check_pmt_hit_opening_angle(
     return 0
 end
 
-
 check_pmt_hit(
     ::AbstractVector,
     ::AbstractVector,
@@ -156,6 +164,20 @@ check_pmt_hit(
     ::PhotonTarget,
     ::Rotation) = error("Not implemented")
 
+"""
+    function check_pmt_hit(
+        hit_positions::AbstractVector,
+        ::AbstractVector,
+        ::AbstractVector,
+        prop_weights::AbstractVector,
+        d::HomogeneousDetector,
+        ::Rotation)
+
+    Test if photons hit a pmt and return a vector of hit pmt indices (0 for no hit).
+    
+    Note: This function effectively resamples the (weighted) photons after photon propagation to hits
+    with their natural rate.
+"""
 function check_pmt_hit(
     hit_positions::AbstractVector,
     ::AbstractVector,

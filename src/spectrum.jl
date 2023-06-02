@@ -14,6 +14,7 @@ using StaticArrays
 using LinearAlgebra
 using CUDA
 using PhysicsTools
+using StructTypes
 using ..Medium
 
 
@@ -22,6 +23,9 @@ abstract type Spectrum end
 struct Monochromatic{T} <: Spectrum
     wavelength::T
 end
+
+StructTypes.StructType(::Type{<:Monochromatic}) = StructTypes.Struct()
+
 
 """
     frank_tamm(wavelength::Real, ref_index::T) where {T<:Real}

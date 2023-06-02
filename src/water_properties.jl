@@ -104,6 +104,9 @@ struct WaterProperties{T<:Real} <: MediumProperties{T}
     end
 end
 
+StructTypes.StructType(::Type{<:WaterProperties}) = StructTypes.Struct()
+
+
 """
     make_cascadia_medium_properties(::Type{T}) where {T<:Real}
 Construct `WaterProperties` with properties from Cascadia Basin of numerical type `T`.

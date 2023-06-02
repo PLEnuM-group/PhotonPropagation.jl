@@ -4,7 +4,7 @@ using Base: @kwdef
 using PhysicalConstants.CODATA2018
 using Parquet
 using DataFrames
-
+using StructTypes
 using PhysicsTools
 
 export make_cascadia_medium_properties

@@ -1,5 +1,6 @@
 export POMAcceptance, POM
 export get_pom_pmt_group
+export make_pom_pmt_coordinates
 
 using HDF5
 using StatsBase
@@ -76,24 +77,72 @@ function POMAcceptance(pmt_acc_fname::String)
 
     return POMAcceptance(sigma_1, sigma_2, total_acc_1, total_acc_2)
 
-
 end
 
 
-struct POM{T,N,L} <: PixelatedTarget{Spherical{T}}
+struct POM{T} <: PixelatedTarget{Spherical{T}}
     shape::Spherical{T}
     pmt_area::Float64
-    pmt_coordinates::SMatrix{2,N,Float64,L}
+    pmt_coordinates::SMatrix{2,16,Float64}
     acceptance::POMAcceptance
     module_id::UInt16
-   
+
+    function POM{T}(position::SVector{3, T}, module_id::Integer) where {T <: Real}
+        PROJECT_ROOT = pkgdir(@__MODULE__)
+
+        pmt_area = (75e-3 / 2)^2 * π
+        target_radius = 0.3
+
+        shape = Spherical(Float32.(position), Float32(target_radius))
+
+        acceptance = POMAcceptance(
+            joinpath(PROJECT_ROOT, "assets/pmt_acc.hd5"),
+        )
+
+        pom = new{T}(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, UInt16(module_id))
+        return pom
+    end
 end
 
+POM(position::SVector{3, T}, module_id::Integer) where {T} = POM{T}(position, module_id)
+
+get_pmt_count(::POM) = 16
+get_pmt_count(::Type{<:POM}) = 16
+
+StructTypes.StructType(::Type{<:POM}) = StructTypes.CustomStruct()
+StructTypes.lower(x::POM) = (x.shape.position, x.module_id)
+StructTypes.lowertype(::Type{POM{T}}) where {T} = Tuple{SVector{3, T}, UInt16}
+StructTypes.construct(::Type{POM{T}}, x::Tuple{SVector{3, T}, UInt16}) where {T} = POM(x[1], x[2])
 
 
+function make_pom_pmt_coordinates(T::Type)
 
-get_pmt_count(::POM{T,N,L}) where {T,N,L} = N
-get_pmt_count(::Type{POM{T,N,L}}) where {T,N,L} = N
+    coords = Matrix{T}(undef, 2, 16)
+
+    #upper 
+    coords[1, 1:4] .= deg2rad(90 - 25)
+    coords[2, 1:4] = (range(0; step=π / 2, length=4))
+
+    # upper 2
+    coords[1, 5:8] .= deg2rad(90 - 57.5)
+    coords[2, 5:8] = (range(π / 4; step=π / 2, length=4))
+
+    # lower 2
+    coords[1, 9:12] .= deg2rad(90 + 25)
+    coords[2, 9:12] = [π/2, 0, 3*π/2, π]
+
+    # lower
+    coords[1, 13:16] .= deg2rad(90 + 57.5)
+    coords[2, 13:16] = [π/4, 7/4*π, 5/4*π, 3/4*π]
+
+    R = calc_rot_matrix(SA[0.0, 0.0, 1.0], SA[1.0, 0.0, 0.0])
+    @views for col in eachcol(coords)
+        cart = sph_to_cart(col[1], col[2])
+        col[:] .= cart_to_sph((R * cart)...)
+    end
+
+    return SMatrix{2,16}(coords)
+end
 
 
 
@@ -113,7 +162,7 @@ function calc_relative_pmt_coords(position::AbstractVector, direction::AbstractV
 end
 
 function get_pom_pmt_group(pmt_ix)
-   return (div.(0:15,  4) .% 2)[pmt_ix] .+1
+   return SA[1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2][pmt_ix]
 end
 
 #=
@@ -185,17 +234,16 @@ function check_pmt_hit(
     target::POM,
     orientation::Rotation{3,<:Real})
 
-
     pmt_positions = get_pmt_positions(target, orientation)
 
-    total_acc_1 = target.acceptance.pos_wl_acc_1.(hit_wavelengths)
-    total_acc_2 = target.acceptance.pos_wl_acc_2.(hit_wavelengths)
+    total_acc_1::Vector{Float64} = target.acceptance.pos_wl_acc_1.(hit_wavelengths)
+    total_acc_2::Vector{Float64} = target.acceptance.pos_wl_acc_2.(hit_wavelengths)
 
     prob_vec = zeros(get_pmt_count(target))
     pmt_hit_ids = zeros(length(hit_positions))
 
-    dists = [Rayleigh(target.acceptance.sigma_1), Rayleigh(target.acceptance.sigma_2)]
-    accs = [total_acc_1, total_acc_2]
+    dists_1 = Rayleigh(target.acceptance.sigma_1)
+    dists_2 = Rayleigh(target.acceptance.sigma_2)
 
     @inbounds for (hit_id, hit_pos) in enumerate(hit_positions)
         
@@ -215,9 +263,10 @@ function check_pmt_hit(
 
             # Reweighting
             # Base distribution is cospt ~ U[-1, 1] -> acos(cospt) ~ 0.5*sin(pt)
-            rel_weight = pdf(dists[pmt_grp], pt) / (0.5 .* sin(pt))
+            pdf_eval = pmt_grp == 1 ? pdf(dists_1, pt) : pdf(dists_2, pt)
+            rel_weight = pdf_eval / (0.5 .* sin(pt))
 
-            hit_a_pmt_prob = accs[pmt_grp][hit_id]
+            hit_a_pmt_prob = pmt_grp == 1 ? total_acc_1[hit_id] : total_acc_2[hit_id]
 
             prob_vec[pmt_ix] = rel_weight * hit_a_pmt_prob
         end

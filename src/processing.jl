@@ -3,11 +3,15 @@ module Processing
 using DataFrames
 using Rotations
 using LinearAlgebra
+using StaticArrays
+using StructTypes
+
 using ..Medium
 using ..Spectral
 using ..Detection
 using ..LightYield
 using ..PhotonPropagationCuda
+
 
 export PhotonPropSetup
 export make_hits_from_photons, propagate_photons
@@ -58,7 +62,15 @@ function propagate_photons(setup::PhotonPropSetup)
     return df
 end
 
+"""
+    function make_hits_from_photons(
+        df::AbstractDataFrame,
+        setup::PhotonPropSetup,
+        target_orientation::AbstractMatrix{<:Real}
+    )
 
+Convert photons to pmt_hits.
+"""
 function make_hits_from_photons(
     df::AbstractDataFrame,
     setup::PhotonPropSetup,
@@ -69,13 +81,12 @@ function make_hits_from_photons(
     hits = []
     for (key, subdf) in pairs(groupby(df, :module_id))
         target = targ_id_map[key.module_id]
-        pmt_ids = check_pmt_hit(
-            subdf[:, :position],
-            subdf[:, :direction],
-            subdf[:, :wavelength],
-            subdf[:, :total_weight],
-            target,
-            target_orientation)
+        pos::Vector{SVector{3, Float64}} = subdf[:, :position]
+        dir::Vector{SVector{3, Float64}} = subdf[:, :direction]
+        wl::Vector{Float64} = subdf[:, :wavelength]
+        weight::Vector{Float64} = subdf[:, :total_weight]
+        pmt_ids = check_pmt_hit(pos, dir, wl, weight, target, target_orientation)
+          
         mask = pmt_ids .> 0
         h = DataFrame(copy(subdf[mask, :]))
         h[!, :pmt_id] .= pmt_ids[mask]
