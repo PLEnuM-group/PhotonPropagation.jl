@@ -62,6 +62,8 @@ function propagate_photons(setup::PhotonPropSetup)
     return df
 end
 
+
+
 """
     function make_hits_from_photons(
         df::AbstractDataFrame,
@@ -76,7 +78,25 @@ function make_hits_from_photons(
     setup::PhotonPropSetup,
     target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
 
-    targ_id_map = Dict([target.module_id => target for target in setup.targets])
+    return make_hits_from_photons(df, setup.targets, target_orientation)
+end
+
+
+"""
+    function make_hits_from_photons(
+        df::AbstractDataFrame,
+        targets::AbstractArray{<:PhotonTarget},
+        target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
+    )
+
+Convert photons to pmt_hits.
+"""
+function make_hits_from_photons(
+    df::AbstractDataFrame,
+    targets::AbstractArray{<:PhotonTarget},
+    target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
+
+    targ_id_map = Dict([target.module_id => target for target in targets])
 
     hits = []
     for (key, subdf) in pairs(groupby(df, :module_id))
