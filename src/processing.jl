@@ -101,8 +101,13 @@ function make_hits_from_photons(
     hits = []
     for (key, subdf) in pairs(groupby(df, :module_id))
         target = targ_id_map[key.module_id]
-        pos::Vector{SVector{3, Float64}} = subdf[:, :position]
-        dir::Vector{SVector{3, Float64}} = subdf[:, :direction]
+
+
+        positions = vec.(eachrow(Matrix(subdf[:, [:pos_x, :pos_y, :pos_z]])))
+        directions = vec.(eachrow(Matrix(subdf[:, [:dir_x, :dir_y, :dir_z]])))
+
+        pos::Vector{SVector{3, Float64}} = positions
+        dir::Vector{SVector{3, Float64}} = directions
         wl::Vector{Float64} = subdf[:, :wavelength]
         weight::Vector{Float64} = subdf[:, :total_weight]
         pmt_ids = check_pmt_hit(pos, dir, wl, weight, target, target_orientation)
