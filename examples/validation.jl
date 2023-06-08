@@ -71,7 +71,7 @@ end
 
 
 
-function plot_distance_scans(stats, target, abs_len=27)
+function plot_distance_scans(stats, target, att_len=27)
     # Start with isotropic emitter
     stats_mean = combine(groupby(stats, :distance), [:n_photons, :n_hits] .=> mean )
 
@@ -85,7 +85,7 @@ function plot_distance_scans(stats, target, abs_len=27)
   
     #attenuation_length(wl, scattering_coeff=0) = 1 / (1/absorption_length(wl, medium) + scattering_coeff)
     photon_expec(dist, att_len=25., norm=1) = norm*1E9*target.shape.radius^2 / (4*dist^2) * exp(-dist / att_len)
-    model(x, p) = photon_expec.(x, p[1], absorption_length(stats[1, :wavelength]))
+    model(x, p) = photon_expec.(x, p[1], att_len)
 
     fit = curve_fit(model, stats_mean[:, :distance], stats_mean[:, :n_photons_mean], [1], lower=[0.1])
     @show coef(fit) 
