@@ -98,6 +98,11 @@ function make_hits_from_photons(
 
     targ_id_map = Dict([target.module_id => target for target in targets])
 
+    if "pos_x" ∉ names(df)
+        transform!(df, :position => (p -> reduce(hcat, p)') => [:pos_x, :pos_y, :pos_z])
+        transform!(df, :direction => (p -> reduce(hcat, p)') => [:dir_x, :dir_y, :dir_z])
+    end
+
     hits = []
     for (key, subdf) in pairs(groupby(df, :module_id))
         target = targ_id_map[key.module_id]

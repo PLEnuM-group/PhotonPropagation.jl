@@ -106,6 +106,11 @@ end
 
 POM(position::SVector{3, T}, module_id::Integer) where {T} = POM{T}(position, module_id)
 
+function Base.convert(::Type{POM{T}}, x::POM) where {T}
+    pos_c = T.(x.shape.position)
+    return POM{T}(pos_c, x.module_id)
+end
+
 get_pmt_count(::POM) = 16
 get_pmt_count(::Type{<:POM}) = 16
 
