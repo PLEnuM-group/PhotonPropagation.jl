@@ -28,10 +28,9 @@ function hit_list_to_dataframe(hit_list, targets, target_mask)
             push!(hits_nt, nt)
         end
     end
-
     return DataFrame(hits_nt)
-
 end
+
 
 function targets_to_dataframe(targets)
 

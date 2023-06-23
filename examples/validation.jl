@@ -39,20 +39,31 @@ function proc_sim(photons, setup)
     return summary_stats, hits
 end
 
-
-function scan_distance(target, medium, spectrum, source_f; n_samples=10, dir_theta=0.2, dir_phi=1.3, return_hits=false, args...)
-
-    function _add_meta!(df, vars)
-        for (key, val) in pairs(vars)
-            df[!, key] .= val
-        end
+function _add_meta!(df, vars)
+    for (key, val) in pairs(vars)
+        df[!, key] .= val
     end
+end
 
-    distances = 10:10:100
+
+function scan_distance(
+    target,
+    medium,
+    spectrum,
+    source_f;
+    n_samples=10,
+    dir_theta=0.2,
+    dir_phi=1.3,
+    pos_theta=1.,
+    pos_phi=0.3,
+    return_hits=false,
+    args...)
+
+    distances = 5:10:105
     stats = []
     all_hits = []
     for distance in distances
-        position = SA_F32[0, 0, distance]
+        position = SVector{3, Float32}(distance .* sph_to_cart(pos_theta, pos_phi))
         direction = SVector{3, Float32}(sph_to_cart(dir_theta, dir_phi))
         source = source_f(position, direction)
         
@@ -83,10 +94,10 @@ function scan_distance(target, medium, spectrum, source_f; n_samples=10, dir_the
 end
 
 
-function scan_phi(target, medium, spectrum, source_f; n_samples=10, args...)
+function scan_phi(target, medium, spectrum, source_f; n_samples=10, distance=20, return_hits=false, args...)
     phis = LinRange(0, 2*π, 20)
     stats = []
-    distance = 20
+    all_hits = []
     for phi in phis
         x = cos(phi)*distance
         y = sin(phi)*distance
@@ -97,17 +108,28 @@ function scan_phi(target, medium, spectrum, source_f; n_samples=10, args...)
         for seed in 1:n_samples
             setup = PhotonPropSetup(source, target, medium, spectrum, seed)
             photons = propagate_photons(setup)
+
+            meta = Dict(:distance => distance, :seed => seed, :dir_phi => phi)
     
             summary_stats, hits = proc_sim(photons, setup)
+            _add_meta!(summary_stats, meta)
+            push!(stats, summary_stats)
 
-            summary_stats[!, :seed] .= seed
-            summary_stats[!, :dir_phi] .= phi
-            push!(stats, hits_per_pmt)
+            if return_hits && nrow(hits) > 0                
+                _add_meta!(hits, meta)
+                push!(all_hits, hits)
+            end
+
+
         end
     end
-    return reduce(vcat, stats)
+    stats = reduce(vcat, stats)
+    if return_hits
+        all_hits = reduce(vcat, all_hits)
+        return stats, all_hits
+    end
+    return stats
 end
-
 
 
 function plot_distance_scans(stats, target, att_len=27)
@@ -116,7 +138,7 @@ function plot_distance_scans(stats, target, att_len=27)
 
 
     fig = Figure()
-    ax = Axis(fig[1, 1], xlabel="Distance (m)", ylabel="Detected Photons", yscale=log10)
+    ax = Axis(fig[1, 1], xlabel="Distance (m)", ylabel="Detected Photons", yscale=Makie.pseudolog10)
 
     ci_photons = reduce(hcat, poisson_confidence_interval.(stats_mean[:, :n_photons_sum]))' ./ stats_mean[:, :nrow]
     ci_hits = reduce(hcat, poisson_confidence_interval.(stats_mean[:, :n_hits_sum]))' ./ stats_mean[:, :nrow]
@@ -127,15 +149,17 @@ function plot_distance_scans(stats, target, att_len=27)
 
     scatter!(ax, stats_mean[:, :distance], stats_mean[:, :n_photons_mean], label="Sphere Hits", color=colors[1],)
     scatter!(ax, stats_mean[:, :distance], stats_mean[:, :n_hits_mean], label="PMT Hits", color=colors[2],)
-    ylims!(ax, 1E-1, 2E5)
   
     #attenuation_length(wl, scattering_coeff=0) = 1 / (1/absorption_length(wl, medium) + scattering_coeff)
     photon_expec(dist, att_len=25., norm=1) = norm*1E9*target.shape.radius^2 / (4*dist^2) * exp(-dist / att_len)
     model(x, p) = photon_expec.(x, att_len, p[1])
 
+    mn, mx = extrema(stats_mean[:, :distance])
+
+
     fit = curve_fit(model, stats_mean[:, :distance], stats_mean[:, :n_photons_mean], [1.], lower=[0.1])
     @show coef(fit) 
-    lines!(ax, 10:1.:100, xs -> photon_expec(xs,att_len, coef(fit)[1]), label=format("Scaling: {:.2f} m", coef(fit)[1]))
+    lines!(ax, mn:1.:mx, xs -> photon_expec(xs,att_len, coef(fit)[1]), label=format("Scaling: {:.2f}", coef(fit)[1]))
     axislegend(ax)
 
     ax2 = Axis(fig[2, 1], ylabel="Ratio")
@@ -146,8 +170,12 @@ function plot_distance_scans(stats, target, att_len=27)
     return fig
 end
 
-function plot_phi_scans(stats, target)
-    stats_mean = combine(groupby(stats, [:dir_phi, :pmt_id]), :nhits => mean => :nhits)
+function plot_phi_scans(stats, target, filename)
+
+    pmt_cols = ["pmt_$i" for i in 1:16]
+    pmt_cols_mean = ["pmt_$i"*"_mean" for i in 1:16]
+
+    stats_mean = combine(groupby(stats, :dir_phi), pmt_cols .=> mean)
     groups = groupby(stats_mean, :dir_phi)
 
     pmt_coords = get_pmt_positions(target, RotMatrix3(I))
@@ -160,14 +188,23 @@ function plot_phi_scans(stats, target)
 
     framerate = 5
 
-    record(fig, "animate_pmt_hits_phi.mp4", groups; framerate = framerate) do group
+    record(fig, filename, groups; framerate = framerate) do group
         
+        #=
         ixs0 = pix_id[1:16]
         m[ixs0] .= 0
 
         ixs = pix_id[Int.(group[:, :pmt_id])]
 
         m[ixs] .= group[:, :nhits]
+
+        =#
+
+        ixs = pix_id[1:16]
+
+        nhits = Matrix(group[:, pmt_cols_mean])[:]
+
+        m[ixs] .= nhits
 
         image, _, _ = mollweide(m)
 
@@ -194,7 +231,10 @@ function _plot_comparison!(stats, expected_amps, g)
     gl = g[1, 1] = GridLayout(2, 1)
     rowsize!(gl, 1, Auto(3))
 
-    ax = Axis(gl[1, 1], ylabel="Detected Photons", yscale=log10)
+
+    safelog(x, lb=1E-10) = x <= 0 ? 1E-10 : log10(x)
+
+    ax = Axis(gl[1, 1], ylabel="Detected Photons", yscale=Makie.pseudolog10)
     #ci_photons = reduce(hcat, poisson_confidence_interval.(stats[:, :n_photons_sum]))' ./ stats[:, :nrow]
     ci_hits = reduce(hcat, poisson_confidence_interval.(stats[:, :n_hits_sum]))' ./ stats[:, :nrow]
     ci_surrogate = reduce(hcat, poisson_confidence_interval.(expected_amps))'
@@ -208,9 +248,9 @@ function _plot_comparison!(stats, expected_amps, g)
     #scatter!(ax, stats[:, :distance], stats[:, :n_photons_mean], label="Sphere Hits", color=colors[1])
     #scatter!(ax, stats[:, :distance], stats[:, :n_hits], color=(:red, 0.5))
     
-
-    ylims!(ax, 1E-2, 3E4)
+    #ylims!(ax, 1E-2, 3E3)
     axislegend(ax)
+
 
     ax2 = Axis(gl[2, 1], ylabel="Pull", xlabel="Distance (m)")
        
@@ -237,13 +277,8 @@ function _plot_comparison!(stats, expected_amps, g)
     return g
 end
 
-function plot_compare_distance_surrogate(stats; settings)
+function plot_compare_distance_surrogate(stats, model; settings)
   
-
-    model_path = joinpath(ENV["WORK"], "time_surrogate")
-    BSON.@load joinpath(model_path, "extended/amplitude_2_FNL.bson") model tf_vec
-    model = gpu(model)
-
     stats_mean = combine(groupby(stats, :distance), [:n_photons, :n_hits] .=> mean, [:n_photons, :n_hits] .=> sum, nrow)
     distances = stats_mean[:, :distance]
 
@@ -252,7 +287,7 @@ function plot_compare_distance_surrogate(stats; settings)
     for distance in distances
         position = SA_F32[0, 0, distance]
         p = Particle(position, direction, 0f0, Float32(settings[:energy]), 0f0, PEMinus)
-        log_expec_per_pmt, _, = get_log_amplitudes([p], [POM(SA_F64[0, 0, 0], 1)], model, tf_vec)
+        log_expec_per_pmt, _, = get_log_amplitudes([p], [POM(SA_F64[0, 0, 0], 1)], model)
 
         push!(expected_amps, exp.(log_expec_per_pmt[:, 1, 1]))
     end
@@ -323,115 +358,170 @@ function run_scan(settings_dict)
 
 end
 
+function plot_compare_time_dist(hits, model; settings)
 
-settings = Dict(
-    :source_type=>"isotropic",
-    :scan_type=>"phi",
-    :g=>0.95,
-    :n_samples=> 3,
-    :n_photons => 1E9,
-    :wavelength => 450,
-)
+    distance = sort(unique(hits[:, :distance]))[2]
+    h = hits[hits[:, :distance] .== distance, :]
 
+    position = SA_F32[0, 0, distance]
+    direction = SVector{3, Float32}(sph_to_cart(settings[:dir_theta], settings[:dir_phi]))
 
-stats = run_scan(settings)
-plot_phi_scans(stats, POM(SA_F64[0, 0, 0], 1))
-Arrow.write("validation_data_isotropic_phi_scan.arrow", stats, metadata=["settings" => JSON3.write(settings)])
+    p = Particle(position, direction, 0f0, Float32(settings[:energy]), 0f0, PEMinus)
+    target = POM(SA_F32[0, 0, 0], 1)
+    medium = make_cascadia_medium_properties(settings[:g])
 
-settings = Dict(
-    :source_type=>"isotropic",
-    :scan_type=>"distance",
-    :g=>0.95,
-    :n_samples=> 3,
-    :n_photons => 1E9,
-    :wavelength => 450,
-)
-
-stats = run_scan(settings)
-
-stats
-
-plot_distance_scans(stats, POM(SA_F64[0, 0, 0], 1))
-Arrow.write("validation_data_isotropic_distance_scan.arrow", stats, metadata=["settings" => JSON3.write(settings)])
-
-settings = Dict(
-    :source_type=>"cascade",
-    :scan_type=>"phi",
-    :g=>0.95,
-    :n_samples=> 3,
-    :energy => 3E4,
-    :wavelength => 450,
-    :dir_theta => 0.1,
-    :dir_phi => 0.3
-)
-
-stats = run_scan(settings)
-plot_phi_scans(stats, POM(SA_F64[0, 0, 0], 1))
-Arrow.append("validation_data_cascade_phi_scan.arrow", stats,  metadata=["settings" => JSON3.write(settings)])
-
-settings = Dict(
-    :source_type=>"cascade",
-    :scan_type=>"distance",
-    :g=>0.95,
-    :n_samples=> 5,
-    :energy => 5E4,
-    :wavelength => 450,
-    :dir_theta => 0.1,
-    :dir_phi => 0.3
-)
-
-stats = run_scan(settings)
-plot_distance_scans(stats, POM(SA_F64[0, 0, 0], 1), 26.)
-Arrow.write("validation_data_cascade_distance_scan.arrow", stats, metadata=["settings" => JSON3.write(settings)])
-stats = Arrow.Table("validation_data_cascade_distance_scan.arrow")
-settings = JSON3.read(Arrow.getmetadata(stats)["settings"], Dict{Symbol, Any})
-stats = DataFrame(stats)
-
-fig1, fig2 = plot_compare_distance_surrogate(stats, settings=settings)
-
-fig2
-
-
-settings = Dict(
-    :source_type=>"cascade",
-    :scan_type=>"distance",
-    :g=>0.95,
-    :n_samples=> 5,
-    :energy => 5E4,
-    :wavelength => 450,
-    :dir_theta => 0.1,
-    :dir_phi => 0.3,
-    :return_hits => true,
-)
-
-stats, hits = run_scan(settings)
-
-jldopen("validation.jld2", "w") do file
-    file["distance/cascade/1/stats"] = stats
-    file["distance/cascade/1/hits"] = hits
-    file["distance/cascade/1/settings"] = settings
+    fig = compare_mc_model([p], [target], Dict("model1" => model), medium, h; oversampling=settings[:n_samples])
+    return fig
 end
+
+
+
+configs = Dict(
+    "iso_phi" => Dict(
+        :source_type=>"isotropic",
+        :scan_type=>"phi",
+        :g=>0.95,
+        :n_samples=> 3,
+        :n_photons => 1E9,
+        :wavelength => 450,
+        :return_hits => true,
+        :distance => 20,  
+    ),
+    "iso_dist" => Dict(
+        :source_type=>"isotropic",
+        :scan_type=>"distance",
+        :g=>0.95,
+        :n_samples=> 3,
+        :n_photons => 1E9,
+        :wavelength => 450.,
+        :return_hits => true,
+        :pos_theta => 0.2,
+        :pos_phi => 1.3
+    ),
+    "casc_phi" => Dict(
+        :source_type=>"cascade",
+        :scan_type=>"phi",
+        :g=>0.95,
+        :n_samples=> 3,
+        :energy => 3E4,
+        :wavelength => 450,
+        :dir_theta => 0.1,
+        :dir_phi => 0.3,
+        :return_hits => true,
+    ),
+    "casc_dist" => Dict(
+        :source_type=>"cascade",
+        :scan_type=>"distance",
+        :g=>0.95,
+        :n_samples=> 5,
+        :energy => 5E4,
+        :wavelength => 450.,
+        :dir_theta => 0.1,
+        :dir_phi => 0.3,
+        :pos_theta => 0.2,
+        :pos_phi => 1.3,
+        :return_hits => true
+    )
+)
+
+
+#=
+jldopen("validation.jld2", "w") do file
+end
+=#
+for (key, conf) in configs
+    stats, hits = run_scan(conf)
+
+    jldopen("validation.jld2", "a") do file
+        file["$key/stats"] = stats
+        file["$key/hits"] = hits
+        file["$key/settings"] = conf
+    end
+end
+
+PROJECT_ROOT = pkgdir(PhotonPropagation)
+figure_dir = joinpath(PROJECT_ROOT, "figures")
+
+jldopen("validation.jld2", "r") do file
+    for key in keys(file)
+        stats = file[key]["stats"]
+        hits = file[key]["hits"]
+        settings = file[key]["settings"]
+
+        if settings[:scan_type] == "phi"
+            fig = plot_phi_scans(stats, POM(SA_F64[0, 0, 0], 1), joinpath(figure_dir, "$(key)_scan.mp4"))
+        elseif settings[:scan_type] == "distance"
+            medium = make_cascadia_medium_properties(settings[:g])
+            fig = plot_distance_scans(stats, POM(SA_F64[0, 0, 0], 1), absorption_length(settings[:wavelength], medium))
+            save(joinpath(figure_dir, "$(key)_scan.png"), fig)
+        end
+       
+        if settings[:scan_type] == "distance" && settings[:source_type] == "cascade"
+            model_path = joinpath(ENV["WORK"], "time_surrogate")
+            model = PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_1_FNL.bson"))
+            model = gpu(model)
+            fig1, fig2 = plot_compare_distance_surrogate(stats, model, settings=settings)
+            fig3 = plot_compare_time_dist(hits, model, settings=settings)
+
+            save(joinpath(figure_dir, "$(key)_summed_comp_scan.png"), fig1)
+            save(joinpath(figure_dir, "$(key)_per_pmt_comp_scan.png"), fig2)
+            save(joinpath(figure_dir, "$(key)_per_pmt_comp_time.png"), fig3)        
+        end
+
+    end
+end
+
+model_path = joinpath(ENV["WORK"], "time_surrogate")
+model = PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_1_FNL.bson"))
+model = gpu(model)
+
+position = SA_F32[0, 0, 20]
+direction = SVector{3, Float32}(sph_to_cart(0.1, 0.3))
+
+p = Particle(position, direction, 0f0, Float32(5E4), 0f0, PEMinus)
+
+exp.(get_log_amplitudes([p], [POM(SA_F64[0, 0, 0], 1)], model)[1])
+
+
+file = jldopen("validation.jld2", "r")
+
+plot_compare_time_dist(file["casc_dist"]["hits"], model, settings=file["casc_dist"]["settings"])
+
+
+
+
+plot_phi_scans(stats, POM(SA_F64[0, 0, 0], 1))
+
+
+medium = make_cascadia_medium_properties(settings[:g])
+plot_distance_scans(stats, POM(SA_F64[0, 0, 0], 1), absorption_length(settings[:wavelength], medium))
+
+
+plot_phi_scans(stats, POM(SA_F64[0, 0, 0], 1))
+
+
+
+medium = make_cascadia_medium_properties(settings[:g])
+plot_distance_scans(stats, POM(SA_F64[0, 0, 0], 1), absorption_length(settings[:wavelength], medium))
+
 
 
 model_path = joinpath(ENV["WORK"], "time_surrogate")
 model = PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_1_FNL.bson"))
 model = gpu(model)
 
-source_gen = (pos, dir) -> ExtendedCherenkovEmitter(
-    Particle(pos, dir, 0f0, Float32(settings_dict[:energy]), 0f0, PEMinus),
-    medium, wl_range) 
 
-distance = 10
-h = hits[hits[:, :distance] .== distance, :]
+fig1, fig2 = plot_compare_distance_surrogate(stats, model, settings=settings)
 
-position = SA_F32[0, 0, distance]
-direction = SVector{3, Float32}(sph_to_cart(settings[:dir_theta], settings[:dir_phi]))
+fig2
 
-p = Particle(position, direction, 0f0, Float32(settings[:energy]), 0f0, PEMinus)
-target = POM(SA_F32[0, 0, 0], 1)
-medium = make_cascadia_medium_properties(settings[:g])
 
-compare_mc_model([p], [target], Dict("model1" => model), medium, hits; oversampling=settings[:n_samples])
+
+
+
+
+plot_compare_time_dist(hits, model, settings=settings)
+
 
 flow_params = calc_flow_input(p, target, model_time[:tf_vec])
 
