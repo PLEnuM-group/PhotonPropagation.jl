@@ -53,6 +53,20 @@ setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 photons = propagate_photons(setup)
 
 
+# Propagate photons for a lightsabre muon
+
+p = Particle(position, direction, 0f0, energy, 400f0, PMuPlus)
+wl_range = (300f0, 800f0)
+source_muon = LightsabreMuonEmitter(p, medium, wl_range)
+
+@show source_muon.photons, source.photons
+
+
+setup = PhotonPropSetup([source_muon], [target], medium, spectrum, seed)
+photons = propagate_photons(setup)
+
+
+
 # Save output
 #=
 hits = make_hits_from_photons(photons, setup)

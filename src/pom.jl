@@ -93,7 +93,7 @@ struct POM{T} <: PixelatedTarget{Spherical{T}}
         pmt_area = (75e-3 / 2)^2 * π
         target_radius = 0.3
 
-        shape = Spherical(Float32.(position), Float32(target_radius))
+        shape = Spherical(T.(position), T(target_radius))
 
         acceptance = POMAcceptance(
             joinpath(PROJECT_ROOT, "assets/pmt_acc.hd5"),
@@ -102,13 +102,26 @@ struct POM{T} <: PixelatedTarget{Spherical{T}}
         pom = new{T}(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, UInt16(module_id))
         return pom
     end
+
+    function POM{T}(
+        shape::Spherical{T},
+        pmt_area::Float64,
+        pmt_coordinates::SMatrix{2,16,Float64},
+        acceptance::POMAcceptance,
+        module_id::UInt16) where {T <: Real}
+        
+        pom = new{T}(shape, pmt_area, pmt_coordinates, acceptance, module_id)
+        return pom
+    end
+
+
 end
 
 POM(position::SVector{3, T}, module_id::Integer) where {T} = POM{T}(position, module_id)
 
 function Base.convert(::Type{POM{T}}, x::POM) where {T}
-    pos_c = T.(x.shape.position)
-    return POM{T}(pos_c, x.module_id)
+    shape = convert(Spherical{T}, x.shape)
+    return POM{T}(shape, x.pmt_area, x.pmt_coordinates, x.acceptance, x.module_id)
 end
 
 get_pmt_count(::POM) = 16

@@ -11,7 +11,7 @@ export rel_additional_track_length
 
 export AngularEmissionProfile
 export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, CherenkovEmitter, PointlikeCherenkovEmitter
-export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter
+export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, LightsabreMuonEmitter
 export cherenkov_ang_dist, cherenkov_ang_dist_int
 export split_source, oversample_source
 
@@ -25,6 +25,7 @@ using Interpolations
 using PoissonRandom
 using PhysicsTools
 using StructTypes
+using StatsBase
 
 using ..Spectral
 using ..Medium
@@ -589,6 +590,20 @@ StructTypes.StructType(::Type{<:CherenkovTrackEmitter}) = StructTypes.Struct()
 
 function CherenkovTrackEmitter(particle::Particle{T}, medium::MediumProperties, wl_range::Tuple{T,T}) where {T<:Real}
     n_photons = pois_rand(total_lightyield(particle, medium, wl_range))
+    return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
+end
+
+function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, wl_range::Tuple{T,T}) where {T<:Real}
+
+    lys = Float64[]
+    for i in 1:100
+        p, secondaries = propagate_muon(particle)
+        ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+        push!(lys, ly_secondaries)
+    end
+    ly_secondaries = mean(lys)
+
+    n_photons = pois_rand(ly_secondaries)
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
 end
 

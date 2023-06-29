@@ -3,11 +3,13 @@ using PhotonPropagation
 using StaticArrays
 using CSV
 using DataFrames
+using PhysicsTools
+using NeutrinoTelescopes
 
 log_energies = 2:0.1:10
 zs = (0:0.1:20.0)# m
 medium = make_cascadia_medium_properties(0.99)
-wls = 200:1.0:800
+wls = 300:1.0:800
 
 p = plot(wls, frank_tamm.(wls, refractive_index.(wls, Ref(medium))) .* 1E9,
     xlabel="Wavelength (nm)", ylabel="Photons / (nm ⋅ m)", dpi=150, xlim=(200, 800),
@@ -66,7 +68,7 @@ plot(log_energies, rel_additional_track_length.(refractive_index(800.0, medium),
 rel_additional_track_length.(refractive_index(800.0, medium), 10 .^ log_energies)
 
 
-wl_range = (200.0, 800.0)
+wl_range = (300.0, 800.0)
 total_lys = total_lightyield.(Ref(Track()), 10 .^ log_energies, 1.0, Ref(medium), Ref(wl_range))
 total_lys_simple = frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium)) .* (1 .+ rel_additional_track_length.(refractive_index(400.0, medium), 10 .^ log_energies))
 
@@ -82,3 +84,12 @@ lambdas = 200:1.0:800
 plot(lambdas, refractive_index.(lambdas, Ref(medium)))
 plot(lambdas, dispersion.(lambdas, Ref(medium)))
 plot(group_velocity.(lambdas, Ref(medium)))
+
+
+medium = make_cascadia_medium_properties(0.95)
+wl_rage = (300., 800.)
+particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 1E4, 1E5, PMuMinus)
+
+p, secondaries = propagate_muon(particle)
+
+ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
