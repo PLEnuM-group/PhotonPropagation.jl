@@ -19,12 +19,12 @@ target = HomogeneousDetector(shape, active_area, UInt16(1))
 
 
 # Setup source
-position = SA_F32[0., 0., 0.]
-source = PointlikeIsotropicEmitter(position, 0f0, 100000)
+pos = SA_F32[0., 0., 0.]
+source = PointlikeIsotropicEmitter(pos, 0f0, 100000)
 
 
 # Setup medium
-mean_sca_angle = 0.99f0
+mean_sca_angle = 0.95f0
 medium = make_cascadia_medium_properties(mean_sca_angle)
 
 # Setup spectrum
@@ -42,7 +42,7 @@ photons = propagate_photons(setup)
 # Propagate photons from an EM Cascade
 energy = Float32(1E5)
 direction = SA_F32[0., 1., 0.]
-p = Particle(position, direction, 0f0, energy, 0f0, PEMinus)
+p = Particle(pos, direction, 0f0, energy, 0f0, PEMinus)
 
 # Wavelength range for Cherenkov emission
 wl_range = (200f0, 800f0)
@@ -55,7 +55,7 @@ photons = propagate_photons(setup)
 
 # Propagate photons for a lightsabre muon
 
-p = Particle(position, direction, 0f0, energy, 400f0, PMuPlus)
+p = Particle(pos, direction, 0f0, energy, 400f0, PMuPlus)
 wl_range = (300f0, 800f0)
 source_muon = LightsabreMuonEmitter(p, medium, wl_range)
 
