@@ -431,10 +431,10 @@ end
 
 
 function total_lightyield(
-    particle::Particle{PT,DT,ET,TT,LT,PType},
+    particle::Particle{T,PType},
     medium::MediumProperties,
     wl_range
-) where {PT,DT,ET,TT,LT,PType}
+) where {T,PType}
     return total_lightyield(particle_shape(PType), particle, medium, wl_range)
 end
 
