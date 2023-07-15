@@ -582,10 +582,10 @@ configs = Dict(
         :scan_type=>"distance",
         :g=>0.95,
         :n_samples=> 5,
-        :energy => 5E4,
+        :energy => 6E4,
         :length => 400,
         :dir_theta => 0.3,
-        :dir_phi => 0.2,
+        :dir_phi => 0.3,
         :return_hits => true
     ),
     "track_single" => Dict(

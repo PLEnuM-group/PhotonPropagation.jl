@@ -603,8 +603,8 @@ function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, 
     end
     ly_secondaries = mean(lys)
     ly_bare = total_lightyield(particle, medium, wl_range)
-
     n_photons = pois_rand(ly_secondaries + ly_bare)
+    
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
 end
 

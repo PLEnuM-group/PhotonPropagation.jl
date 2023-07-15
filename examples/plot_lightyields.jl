@@ -87,9 +87,7 @@ plot(group_velocity.(lambdas, Ref(medium)))
 
 
 medium = make_cascadia_medium_properties(0.95)
-wl_rage = (300., 800.)
-particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 1E4, 1E5, PMuMinus)
+wl_range = (300., 800.)
+particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 1E3, 1E5, PMuMinus)
 
-p, secondaries = propagate_muon(particle)
-
-ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+LightsabreMuonEmitter(particle, medium, wl_range)
