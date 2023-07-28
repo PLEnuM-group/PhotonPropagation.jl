@@ -585,7 +585,7 @@ configs = Dict(
         :energy => 6E4,
         :length => 400,
         :dir_theta => 0.3,
-        :dir_phi => 0.3,
+        :dir_phi => 0.5,
         :return_hits => true
     ),
     "track_single" => Dict(
@@ -593,20 +593,20 @@ configs = Dict(
         :scan_type=>"single",
         :g=>0.95,
         :n_samples=> 20,
-        :energy => 5E4,
+        :energy => 6E4,
         :length => 400,
         :dir_theta => 0.3,
-        :dir_phi => 0.2,
+        :dir_phi => 0.5,
         :pos_x => 5,
         :pos_y => 6,
-        :pos_z => 7,
+        :pos_z => 10,
         :return_hits => true
     )
 )
 
 
 
-
+sqrt(5^2 + 6^2 + 10^2)
 
 jldopen("validation.jld2", "w") do file
 end
@@ -645,7 +645,13 @@ models_track = Dict(
 
 )
 
+extension = "svg"
+
 jldopen("validation.jld2", "r") do file
+    fontsize_theme = Theme(
+        fontsize = 30, linewidth=3,
+        Axis=(xlabelsize=35, ylabelsize=35))
+    set_theme!(fontsize_theme)
     for key in keys(file)
         stats = file[key]["stats"]
         hits = file[key]["hits"]
@@ -668,18 +674,18 @@ jldopen("validation.jld2", "r") do file
             fig1, fig2 = plot_compare_distance_surrogate(stats, models, settings=settings)
             fig3, fig4 = plot_compare_time_dist(hits, models, settings=settings)
 
-            save(joinpath(figure_dir, "$(key)_summed_comp_scan.png"), fig1)
-            save(joinpath(figure_dir, "$(key)_per_pmt_comp_scan.png"), fig2)
-            save(joinpath(figure_dir, "$(key)_per_pmt_comp_time.png"), fig3)        
-            save(joinpath(figure_dir, "$(key)_per_pmt_max_comp_time.png"), fig4)        
+            save(joinpath(figure_dir, "$(key)_summed_comp_scan.$(extension)"), fig1)
+            save(joinpath(figure_dir, "$(key)_per_pmt_comp_scan.$(extension)"), fig2)
+            save(joinpath(figure_dir, "$(key)_per_pmt_comp_time.$(extension)"), fig3)        
+            save(joinpath(figure_dir, "$(key)_per_pmt_max_comp_time.$(extension)"), fig4)        
         end
 
         if settings[:scan_type] == "single"
             models = settings[:source_type] == "track" ? models_track : models_casc
            
             fig1, fig2 = plot_compare_time_dist_single(hits, models, settings=settings)
-            save(joinpath(figure_dir, "$(key)_per_pmt_comp_time.png"), fig1)
-            save(joinpath(figure_dir, "$(key)_per_pmt_max_comp_time.png"), fig2)
+            save(joinpath(figure_dir, "$(key)_per_pmt_comp_time.$(extension)"), fig1)
+            save(joinpath(figure_dir, "$(key)_per_pmt_max_comp_time.$(extension)"), fig2)
         end
 
 
