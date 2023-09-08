@@ -261,7 +261,7 @@ function run_scan(settings_dict)
         scan_f = scan_distance
     elseif settings_dict[:scan_type] == "phi"
         scan_f = scan_phi
-    elseif settings_dict[:scan_type] == "single"
+    elseif settings_dict[:scan_type] == "single" || settings_dict[:scan_type] == "single_timeuncert"
         scan_f = prop_single
     end
 
@@ -527,8 +527,6 @@ function plot_compare_time_dist_single(hits, models; settings)
 end
 
 
-
-
 #=
 configs = Dict(
     "iso_phi" => Dict(
@@ -575,9 +573,7 @@ configs = Dict(
         :pos_phi => 1.3,
         :return_hits => true
     ),
-=#
-configs = Dict(
-    "track_dist" => Dict(
+     "track_dist" => Dict(
         :source_type=>"track",
         :scan_type=>"distance",
         :g=>0.95,
@@ -586,11 +582,27 @@ configs = Dict(
         :length => 400,
         :dir_theta => 0.3,
         :dir_phi => 0.5,
-        :return_hits => true
+        :return_hits => true,
     ),
     "track_single" => Dict(
         :source_type=>"track",
         :scan_type=>"single",
+        :g=>0.95,
+        :n_samples=> 20,
+        :energy => 6E4,
+        :length => 400,
+        :dir_theta => 0.3,
+        :dir_phi => 0.5,
+        :pos_x => 5,
+        :pos_y => 6,
+        :pos_z => 10,
+        :return_hits => true
+    ),
+=#
+configs = Dict(   
+    "track_single_timing_uncert" => Dict(
+        :source_type=>"track",
+        :scan_type=>"single_timeuncert",
         :g=>0.95,
         :n_samples=> 20,
         :energy => 6E4,
@@ -606,7 +618,6 @@ configs = Dict(
 
 
 
-sqrt(5^2 + 6^2 + 10^2)
 
 jldopen("validation.jld2", "w") do file
 end
@@ -642,8 +653,21 @@ models_track = Dict(
     "Model B" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_2_FNL.bson")),
     #"A3S1" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_1_FNL.bson")),
     "Model C" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_4_FNL.bson")),
-
 )
+
+models_track_15 = Dict(
+    "Model A (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
+    "Model B (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_2_FNL.bson")),
+    "Model C (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_4_FNL.bson")),
+)
+
+models_track_25 = Dict(
+    "Model A (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_1_FNL.bson")),
+    "Model B (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_2_FNL.bson")),
+    "Model C (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_4_FNL.bson")),
+)
+
+all_models_track = Dict(0 => models_track, 1.5 => models_track_15, 2.5 => models_track_25)
 
 extension = "svg"
 
@@ -686,6 +710,17 @@ jldopen("validation.jld2", "r") do file
             fig1, fig2 = plot_compare_time_dist_single(hits, models, settings=settings)
             save(joinpath(figure_dir, "$(key)_per_pmt_comp_time.$(extension)"), fig1)
             save(joinpath(figure_dir, "$(key)_per_pmt_max_comp_time.$(extension)"), fig2)
+        elseif settings[:scan_type] == "single_timeuncert"
+            all_models = settings[:source_type] == "track" ? all_models_track : all_models_casc
+
+            for (uncert, models) in all_models
+                hits_smeared = copy(hits)
+                hits_smeared[:, :tres] .+= randn(nrow(hits_smeared)) * uncert
+                fig1, fig2 = plot_compare_time_dist_single(hits_smeared, models, settings=settings)
+                save(joinpath(figure_dir, "$(key)_per_pmt_comp_time_uncert_$(uncert).$(extension)"), fig1)
+                save(joinpath(figure_dir, "$(key)_per_pmt_max_comp_time_uncert$(uncert).$(extension)"), fig2)
+            end
+          
         end
 
 

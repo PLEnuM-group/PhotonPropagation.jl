@@ -3,7 +3,9 @@ using StaticArrays
 using PhysicsTools
 using CUDA
 using JSON3
-
+using CairoMakie
+using Distributions
+using LinearAlgebra
 
 # Target Shape
 module_position = SA[0., 0., 10.]
@@ -64,6 +66,66 @@ source_muon = LightsabreMuonEmitter(p, medium, wl_range)
 
 setup = PhotonPropSetup([source_muon], [target], medium, spectrum, seed)
 photons = propagate_photons(setup)
+
+
+
+# Propagate photons in water and ice and compare
+
+module_position = SA[0., 0., 10.]
+module_radius = 0.3
+active_area = 16 * π * (0.0762)^2
+shape = Spherical(module_position, module_radius)
+
+# convert to Float32 for fast computation on gpu
+shape = convert(Spherical{Float32}, shape)
+
+# Setup target
+target = HomogeneousDetector(shape, active_area, UInt16(1))
+
+
+# Setup source
+pos = SA_F32[0., 0., 0.]
+source = PointlikeIsotropicEmitter(pos, 0f0, 10000000)
+
+
+# Setup medium
+mean_sca_angle = 0.95f0
+medium_water = make_cascadia_medium_properties(mean_sca_angle)
+medium_ice = make_homogenous_clearice_properties()
+
+# Setup spectrum
+spectrum = Monochromatic(450f0)
+
+seed = 1
+
+# Setup propagation
+setup_ice = PhotonPropSetup([source], [target], medium_ice, spectrum, seed)
+setup_water = PhotonPropSetup([source], [target], medium_water, spectrum, seed)
+
+sca = scattering_length(300., medium_water)
+geo_distance = norm(source.position .- target.shape.position)
+cutoff_time = 200
+cutoff_distance = geo_distance + cutoff_time*group_velocity(450., medium_water)
+calc_number_of_steps(sca, cutoff_distance, 0.999)
+
+
+
+# Run propagation
+photons_ice = propagate_photons(setup_ice, 31)
+photons_water = propagate_photons(setup_water, 10)
+
+bins = 40:0.5:80
+
+fig = Figure()
+ax = Axis(fig[1, 1], yscale=log10)
+
+hist!(ax, photons_ice[:, :time], weight=photons_ice[:, :total_weight], bins=bins, fillto=1)
+hist!(ax, photons_water[:, :time], weight=photons_water[:, :total_weight], bins=bins, fillto=1)
+ylims!(1, 1E4)
+#hist!(ax, photons_water[:, :time], weight=photons_water[:, :total_weight], bins=bins)
+fig
+
+
 
 
 

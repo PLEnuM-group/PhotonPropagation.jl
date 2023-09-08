@@ -390,7 +390,7 @@ function total_lightyield(::Track, energy::Number, length::Number, medium, wl_ra
 
     # This is probably correct...
     function integrand(wl)
-        ref_ix = refractive_index(wl, medium)
+        ref_ix = phase_refractive_index(wl, medium)
         return frank_tamm(wl, ref_ix) * (1 + rel_additional_track_length(ref_ix, energy))
     end
     T = typeof(energy)
@@ -423,7 +423,7 @@ end
 
 function total_lightyield(::Cascade, particle, medium, wl_range)
     total_contrib = (
-        frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium)) *
+        frank_tamm_norm(wl_range, wl -> phase_refractive_index(wl, medium)) *
         cascade_cherenkov_track_length(particle.energy, particle.type)
     )
     return total_contrib

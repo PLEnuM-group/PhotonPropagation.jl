@@ -16,6 +16,7 @@ using ..PhotonPropagationCuda
 export PhotonPropSetup
 export make_hits_from_photons, propagate_photons
 export calc_total_weight!
+export calc_number_of_steps
 
 mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVector{<:PhotonTarget},M<:MediumProperties,C<:Spectrum}
     sources::SV
@@ -41,16 +42,16 @@ function calc_total_weight!(df::AbstractDataFrame, setup::PhotonPropSetup)
 
     abs_length = absorption_length.(df[:, :wavelength], Ref(setup.medium))
     df[!, :abs_weight] = convert(Vector{Float64}, exp.(-df[:, :dist_travelled] ./ abs_length))
-    df[!, :ref_ix] = refractive_index.(df[:, :wavelength], Ref(setup.medium))
+    #df[!, :ref_ix] = refractive_index.(df[:, :wavelength], Ref(setup.medium))
     df[!, :total_weight] = df[:, :base_weight] .* df[:, :abs_weight]
 
     return df
 end
 
-function propagate_photons(setup::PhotonPropSetup)
+function propagate_photons(setup::PhotonPropSetup, steps=15)
 
     hits, n_ph_sim = run_photon_prop_no_local_cache(
-        setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spectrum, setup.seed)
+        setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spectrum, setup.seed, n_steps=steps)
 
     df = DataFrame(hits)
 
@@ -126,4 +127,25 @@ function make_hits_from_photons(
 
     return reduce(vcat, hits)
 end
+
+"""
+    calc_number_of_steps(sca_len, cutoff_distance, percentile=0.9)
+
+Calculate the number of photon propagation steps required so that a fraction `percentile`
+of all photons has travelled further than cutoff_distance.
+"""
+function calc_number_of_steps(sca_len, cutoff_distance, percentile=0.9)
+    n_steps = ceil(Int64, cutoff_distance / sca_len)
+    while true
+        d = Erlang(n_steps, sca_len)
+        if quantile(d, 1-percentile) > cutoff_distance
+            break
+        end
+        n_steps += 1
+    end
+    return n_steps
+end
+
+
+
 end

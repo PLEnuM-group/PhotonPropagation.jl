@@ -336,7 +336,8 @@ function cuda_propagate_photons!(
     source::PhotonSource,
     spectrum::Spectrum,
     targets::CuDeviceVector{<:TargetShape},
-    medium::MediumProperties{T}) where {T}
+    medium::MediumProperties{T},
+    nsteps::Int32) where {T}
 
     block = blockIdx().x
     thread = threadIdx().x
@@ -349,6 +350,7 @@ function cuda_propagate_photons!(
 
     Random.seed!(seed + global_thread_index)
 
+   
     this_n_photons, remainder = divrem(source.photons, n_threads_total)
 
     if global_thread_index <= remainder
@@ -358,7 +360,7 @@ function cuda_propagate_photons!(
     n_photons_simulated = Int64(0)
 
     @inbounds for i in 1:this_n_photons
-
+        
         photon_state = initialize_photon_state(source, medium, spectrum)
 
         dir::SVector{3,T} = photon_state.direction
@@ -370,10 +372,10 @@ function cuda_propagate_photons!(
         dist_travelled = T(0)
 
         sca_len::T = scattering_length(wavelength, medium)
-        c_grp::T = group_velocity(wavelength, medium)
 
-        steps::Int32 = 15
-        for nstep in Int32(1):steps
+        c_grp::T = group_velocity(wavelength, medium)
+        
+        for nstep in Int32(1):nsteps
 
             eta = rand(T)
             step_size::T = -log(eta) * sca_len
@@ -418,20 +420,20 @@ function cuda_propagate_photons!(
             out_hits.module_id[stack_idx] = module_ix
 
             break
+       
         end
-
         n_photons_simulated += 1
 
     end
 
     CUDA.atomic_add!(pointer(out_n_ph_simulated, 1), n_photons_simulated)
     out_err_code[1] = 0
-
+    
     return nothing
 
 end
 
-
+#=
 function cuda_propagate_photons!(
     out_positions::CuDeviceVector{SVector{3,T}},
     out_directions::CuDeviceVector{SVector{3,T}},
@@ -446,7 +448,8 @@ function cuda_propagate_photons!(
     source::PhotonSource,
     spectrum::Spectrum,
     target::TargetShape,
-    medium::MediumProperties{T}) where {T}
+    medium::MediumProperties{T},
+    nsteps::Int32) where {T}
 
     block = blockIdx().x
     thread = threadIdx().x
@@ -483,8 +486,7 @@ function cuda_propagate_photons!(
         c_grp::T = group_velocity(wavelength, medium)
 
 
-        steps::Int32 = 15
-        for nstep in Int32(1):steps
+          for nstep in Int32(1):nsteps
 
             eta = rand(T)
             step_size::T = -log(eta) * sca_len
@@ -531,7 +533,7 @@ function cuda_propagate_photons!(
     return nothing
 
 end
-
+=#
 
 function process_output(output::AbstractVector{T}, stack_pointers::AbstractVector{<:Integer}) where {T}
 
@@ -617,7 +619,8 @@ function run_photon_prop_no_local_cache(
     medium::MediumProperties,
     spectrum::Spectrum,
     seed::Int64;
-    time_type::Type=Float32)
+    time_type::Type=Float32,
+    n_steps=15)
     avail_mem = CUDA.totalmem(collect(CUDA.devices())[1])
     max_total_stack_len = calculate_max_stack_size(0.7 * avail_mem, Float32, time_type)
 
@@ -631,7 +634,7 @@ function run_photon_prop_no_local_cache(
 
     kernel = @cuda launch = false cuda_propagate_photons!(
         photon_hits, stack_idx, n_ph_sim, err_code, seed,
-        sources[1], spectrum, targets, medium)
+        sources[1], spectrum, targets, medium, Int32(n_steps))
 
     blocks, threads = CUDA.launch_configuration(kernel.fun)
 
@@ -639,7 +642,7 @@ function run_photon_prop_no_local_cache(
     for source in sources
         kernel(
             photon_hits, stack_idx, n_ph_sim, err_code, seed,
-            source, spectrum, targets, medium; threads=threads, blocks=blocks)
+            source, spectrum, targets, medium, Int32(n_steps); threads=threads, blocks=blocks)
     end
 
     stack_idx = Vector(stack_idx)[1]

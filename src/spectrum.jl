@@ -61,11 +61,11 @@ function frank_tamm_inverted_cdf(wl_range::Tuple{T,T}, medium::MediumProperties,
     norms = Vector{T}(undef, size(wl_steps, 1))
     norms[1] = 0
 
-    full_norm = frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium))
+    full_norm = frank_tamm_norm(wl_range, wl -> phase_refractive_index(wl, medium))
 
     for i in eachindex(wl_steps)[2:end]
         step = wl_steps[i]
-        norms[i] = frank_tamm_norm((wl_range[1], step), wl -> refractive_index(wl, medium)) / full_norm
+        norms[i] = frank_tamm_norm((wl_range[1], step), wl -> phase_refractive_index(wl, medium)) / full_norm
     end
 
     sorting = sortperm(norms)

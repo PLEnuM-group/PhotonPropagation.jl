@@ -8,11 +8,12 @@ using StructTypes
 using PhysicsTools
 
 export make_cascadia_medium_properties
+export make_homogenous_clearice_properties
 export salinity, pressure, temperature, vol_conc_small_part, vol_conc_large_part, radiation_length, material_density
-export refractive_index, scattering_length, absorption_length, dispersion, group_velocity, cherenkov_angle
-export c_at_wl
+export phase_refractive_index, scattering_length, absorption_length, dispersion, group_velocity, cherenkov_angle, group_refractive_index
 export mean_scattering_angle
-export MediumProperties, WaterProperties
+export MediumProperties, WaterProperties, HomogenousIceProperties
+
 
 
 Unitful.register(Medium)
@@ -21,6 +22,7 @@ const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 abstract type MediumProperties{T<:Real} end
 
 include("water_properties.jl")
+include("ice_properties.jl")
 
 
 # Interface for MediumProperties
@@ -44,16 +46,24 @@ scattering_length(wavelength, medium::MediumProperties) = error("Not implemented
 
 
 """
-    refractive_index(wavelength, medium)
-Return the refractive index at `wavelength`.
+    group_refractive_index(wavelength, medium)
+Return the group refractive index at `wavelength`.
 
 `wavelength` is expected to be in units nm.
 """
-refractive_index(wavelength, medium::MediumProperties) = error("Not implemented for $(typeof(medium))")
+group_refractive_index(wavelength, medium::MediumProperties) = error("Not implemented for $(typeof(medium))")
+
+"""
+    phase_refractive_index(wavelength, medium)
+Return the group refractive index at `wavelength`.
+
+`wavelength` is expected to be in units nm.
+"""
+phase_refractive_index(wavelength, medium::MediumProperties) = error("Not implemented for $(typeof(medium))")
 
 
 """
-    refractive_index(wavelength, medium)
+    dispersion(wavelength, medium)
 Return the dispersion at `wavelength`.
 
 `wavelength` is expected to be in units nm.
@@ -68,7 +78,7 @@ Calculate the cherenkov angle (in rad) for `wavelength`.
 `wavelength` is expected to be in units nm.
 """
 function cherenkov_angle(wavelength, medium::MediumProperties)
-    return acos(one(typeof(wavelength)) / refractive_index(wavelength, medium))
+    return acos(one(typeof(wavelength)) / phase_refractive_index(wavelength, medium))
 end
 
 """
@@ -79,20 +89,9 @@ Return the group_velocity in m/ns at `wavelength`.
 """
 function group_velocity(wavelength::T, medium::MediumProperties) where {T<:Real}
     global c_vac_m_ns
-    ref_ix::T = refractive_index(wavelength, medium)
+    ref_ix::T = phase_refractive_index(wavelength, medium)
     λ_0::T = ref_ix * wavelength
     T(c_vac_m_ns) / (ref_ix - λ_0 * dispersion(wavelength, medium))
-end
-
-"""
-    c_at_wl(wavelength, medium)
-Return speed of light in `medium` (m/ns) at wavelength `wavelength`.
-
-`wavelength` is expected to be in units nm.
-"""
-function c_at_wl(wavelength, medium::MediumProperties)
-    c_vac = ustrip(u"m/ns", SpeedOfLightInVacuum)
-    return c_vac / refractive_index(wavelength, medium)
 end
 
 """

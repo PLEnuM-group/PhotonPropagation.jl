@@ -321,7 +321,7 @@ vol_conc_large_part(x::WaterProperties) = x.vol_conc_large_part
 radiation_length(x::WaterProperties) = x.radiation_length
 mean_scattering_angle(x::WaterProperties) = x.mean_scattering_angle
 
-refractive_index(wavelength::Real, medium::WaterProperties) = refractive_index_fry(
+phase_refractive_index(wavelength::Real, medium::WaterProperties) = refractive_index_fry(
     wavelength,
     medium.quan_fry_params
 )
