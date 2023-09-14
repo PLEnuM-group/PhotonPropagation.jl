@@ -13,7 +13,7 @@ export AngularEmissionProfile
 export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, CherenkovEmitter, PointlikeCherenkovEmitter
 export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, LightsabreMuonEmitter
 export cherenkov_ang_dist, cherenkov_ang_dist_int
-export split_source, oversample_source
+export split_source, rescale_source
 
 import Base: @kwdef
 using SpecialFunctions: gamma
@@ -476,15 +476,15 @@ end
 
 
 """
-    oversample_source(em::T, factor::Number) where {T <: PhotonSource}
+    rescale_source(em::T, factor::Number) where {T <: PhotonSource}
 
 Return a new emitter of type `T` with number of photons increased by `factor`
 """
-function oversample_source(em::T, factor::Number) where {T<:PhotonSource}
+function rescale_source(em::T, factor::Number) where {T<:PhotonSource}
     args = []
     for field in fieldnames(T)
         if field == :photons
-            push!(args, getfield(em, field) * factor)
+            push!(args, Int64(ceil(getfield(em, field) * factor)))
         else
             push!(args, getfield(em, field))
         end
@@ -598,7 +598,11 @@ function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, 
     lys = Float64[]
     for i in 1:100
         p, secondaries = propagate_muon(particle)
-        ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+        if length(secondaries) > 0
+            ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+        else
+            ly_secondaries = 0.
+        end
         push!(lys, ly_secondaries)
     end
     ly_secondaries = mean(lys)

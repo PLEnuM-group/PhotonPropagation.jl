@@ -23,7 +23,7 @@ function proc_sim(photons, setup)
     hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
     calc_time_residual!(hits, setup)
     n_photons = sum(photons[:, :total_weight])
-    hits_per_pmt = combine(groupby(hits, :pmt_id), nrow => :nhits)
+    hits_per_pmt = combine(groupby(hits, :pmt_id), :total_weight => sum => :nhits)
 
     pmt_max = nrow(hits) > 0 ? hits_per_pmt[argmax(hits_per_pmt[:, :nhits]), :pmt_id] : 0
 
@@ -184,7 +184,6 @@ function prop_single(
     end
     return stats
 end
-
 
 
 function scan_phi(target, medium, spectrum, source_f; n_samples=10, distance=20, return_hits=false, args...)

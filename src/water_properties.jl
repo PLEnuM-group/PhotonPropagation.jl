@@ -196,7 +196,7 @@ function refractive_index_fry(
     x = one(wavelength) / wavelength
     x2 = x * x
     # a01 + x*a2 + x^2 * a3 + x^3 * a4
-    return oftype(wavelength, fma(x, a2, a01) + fma(x2, a3, x2 * x * a4))
+    return oftype(wavelength, a01 + x*a2 + x2*a3 + x2 * x * a4)
 end
 
 function refractive_index_fry(

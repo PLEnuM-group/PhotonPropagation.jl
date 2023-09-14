@@ -160,7 +160,6 @@ check_pmt_hit(
     ::AbstractVector,
     ::AbstractVector,
     ::AbstractVector,
-    ::AbstractVector,
     ::PhotonTarget,
     ::Rotation) = error("Not implemented")
 
@@ -169,7 +168,6 @@ check_pmt_hit(
         hit_positions::AbstractVector,
         ::AbstractVector,
         ::AbstractVector,
-        prop_weights::AbstractVector,
         d::HomogeneousDetector,
         ::Rotation)
 
@@ -188,7 +186,7 @@ function check_pmt_hit(
     
     hit_prob = d.active_area / surface_area(d.shape)
     # Mask is 1 if rand() < hit_prob
-    hit_mask = rand(length(hit_positions)) .< hit_prob .* prop_weights
+    hit_mask = rand(length(hit_positions)) .< hit_prob
     
     return hit_mask
 
@@ -198,14 +196,13 @@ function check_pmt_hit(
     hit_positions::AbstractVector{T},
     ::AbstractVector,
     hit_wavelengths::AbstractVector,
-    prop_weights::AbstractVector,
     target::SphericalMultiPMTDetector,
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
 
 
     wl_acc = target.wl_acceptance.(hit_wavelengths)
     
-    hits = rand(length(hit_positions)) .< (wl_acc .* prop_weights)
+    hits = rand(length(hit_positions)) .< wl_acc
 
     pmt_positions = get_pmt_positions(target, orientation)
     pmt_radius = sqrt(target.pmt_area / π)
@@ -228,5 +225,6 @@ end
 abstract type PMTAcceptance end
 
 include("pom.jl")
+include("dom.jl")
 
 end

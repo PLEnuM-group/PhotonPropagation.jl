@@ -90,7 +90,7 @@ end
         target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
     )
 
-Convert photons to pmt_hits.
+Convert photons to pmt_hits. Does not yet apply propagation weights.
 """
 function make_hits_from_photons(
     df::AbstractDataFrame,
@@ -115,10 +115,10 @@ function make_hits_from_photons(
         pos::Vector{SVector{3, Float64}} = positions
         dir::Vector{SVector{3, Float64}} = directions
         wl::Vector{Float64} = subdf[:, :wavelength]
-        weight::Vector{Float64} = subdf[:, :total_weight]
-        pmt_ids = check_pmt_hit(pos, dir, wl, weight, target, target_orientation)
-          
+        pmt_ids = check_pmt_hit(pos, dir, wl, target, target_orientation)
+
         mask = pmt_ids .> 0
+        
         h = DataFrame(copy(subdf[mask, :]))
         h[!, :pmt_id] .= pmt_ids[mask]
         push!(hits, h)

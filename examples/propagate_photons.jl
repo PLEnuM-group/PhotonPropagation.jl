@@ -6,6 +6,7 @@ using JSON3
 using CairoMakie
 using Distributions
 using LinearAlgebra
+using Rotations
 
 # Target Shape
 module_position = SA[0., 0., 10.]
@@ -126,7 +127,30 @@ ylims!(1, 1E4)
 fig
 
 
+# Propagate photons to a DOM and plot detected photons
+module_position = SA[0., 0., 10.]
+target = DOM(module_position, 1)
+energy = Float32(1E5)
 
+theta = deg2rad(30f0)
+phi = deg2rad(30f0)
+direction = sph_to_cart(theta, phi)
+pos = SA_F32[0., 0., 0.]
+p = Particle(pos, direction, 0f0, energy, 400f0, PMuPlus)
+wl_range = (300f0, 800f0)
+medium_ice = make_homogenous_clearice_properties()
+source_muon = LightsabreMuonEmitter(p, medium_ice, wl_range)
+seed = 1
+spectrum = CherenkovSpectrum(wl_range, medium_ice)
+setup = PhotonPropSetup([source_muon], [target], medium_ice, spectrum, seed)
+
+photons = propagate_photons(setup)
+
+hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
+
+zen = cos.(hits[:, :dir_z])
+
+hist(zen)
 
 
 # Save output

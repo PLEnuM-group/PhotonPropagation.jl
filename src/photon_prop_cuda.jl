@@ -348,6 +348,8 @@ function cuda_propagate_photons!(
     n_threads_total = (griddim * blockdim)
     global_thread_index::Int32 = (block - Int32(1)) * blockdim + thread
 
+    out_err_code[1] = 0
+
     Random.seed!(seed + global_thread_index)
 
    
@@ -360,6 +362,12 @@ function cuda_propagate_photons!(
     n_photons_simulated = Int64(0)
 
     @inbounds for i in 1:this_n_photons
+        # Check if there's enough space in the output vector
+        if out_stack_pointer[1] >= length(out_hits)-1
+            # not enough space
+            out_err_code[1] = 1
+            break
+        end
         
         photon_state = initialize_photon_state(source, medium, spectrum)
 
@@ -427,7 +435,7 @@ function cuda_propagate_photons!(
     end
 
     CUDA.atomic_add!(pointer(out_n_ph_simulated, 1), n_photons_simulated)
-    out_err_code[1] = 0
+    
     
     return nothing
 
@@ -622,10 +630,11 @@ function run_photon_prop_no_local_cache(
     time_type::Type=Float32,
     n_steps=15)
     avail_mem = CUDA.totalmem(collect(CUDA.devices())[1])
-    max_total_stack_len = calculate_max_stack_size(0.7 * avail_mem, Float32, time_type)
+    max_total_stack_len = calculate_max_stack_size(0.8 * avail_mem, Float32, time_type)
 
-    photon_hits = StructArray{PhotonHit{Float32,time_type}}(undef, max_total_stack_len)
-    photon_hits = replace_storage(CuVector, photon_hits)
+    photon_hits_cpu = StructArray{PhotonHit{Float32,time_type}}(undef, max_total_stack_len)
+    photon_hits_gpu = replace_storage(CuVector, photon_hits_cpu)
+
     stack_idx = CuVector(ones(Int64, 1))
     n_ph_sim = CuVector(zeros(Int64, 1))
     err_code = CuVector(zeros(Int32, 1))
@@ -633,22 +642,41 @@ function run_photon_prop_no_local_cache(
 
 
     kernel = @cuda launch = false cuda_propagate_photons!(
-        photon_hits, stack_idx, n_ph_sim, err_code, seed,
+        photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
         sources[1], spectrum, targets, medium, Int32(n_steps))
 
     blocks, threads = CUDA.launch_configuration(kernel.fun)
 
     # Can assign photons to sources by keeping track of stack_idx for each source
     for source in sources
-        kernel(
-            photon_hits, stack_idx, n_ph_sim, err_code, seed,
-            source, spectrum, targets, medium, Int32(n_steps); threads=threads, blocks=blocks)
+        CUDA.@sync begin
+            kernel(
+                photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
+                source, spectrum, targets, medium, Int32(n_steps); threads=threads, blocks=blocks)
+        end
+        err_code = Vector(err_code)[1]
+        # We ran out of memory
+        if err_code == 1
+            @error "Photon prop ran out of memory. Photon stats may be reduced"
+        end
+
+        
     end
 
     stack_idx = Vector(stack_idx)[1]
-    photon_hits = replace_storage(Vector, photon_hits[1:stack_idx-1])
+    n_ph_sim = Vector(n_ph_sim)[1]
+    
+    #photon_hits = replace_storage(Vector, photon_hits[1:stack_idx-1])
 
-    return photon_hits, Vector(n_ph_sim)[1]
+    # Copy back to CPU without reallocating
+    for (key, s) in pairs(StructArrays.components(photon_hits_gpu))
+        copyto!(StructArrays.component(photon_hits_cpu, key), s)
+    end
+    photon_hits_cpu = photon_hits_cpu[1:stack_idx-1]
+
+    #photon_hits = replace_storage(Vector, photon_hits)[1:stack_idx-1]
+
+    return photon_hits_cpu, n_ph_sim
 end
 
 

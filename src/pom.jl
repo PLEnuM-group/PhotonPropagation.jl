@@ -248,7 +248,6 @@ function check_pmt_hit(
     hit_positions::AbstractVector,
     hit_directions::AbstractVector,
     hit_wavelengths::AbstractVector,
-    prop_weight::AbstractVector,
     target::POM,
     orientation::Rotation{3,<:Real})
 
@@ -264,11 +263,6 @@ function check_pmt_hit(
     dists_2 = Rayleigh(target.acceptance.sigma_2)
 
     @inbounds for (hit_id, hit_pos) in enumerate(hit_positions)
-        
-        # Continue to next photon if this one doesn't survive propagation
-        if rand() > prop_weight[hit_id]
-            continue
-        end
         
         rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
 
