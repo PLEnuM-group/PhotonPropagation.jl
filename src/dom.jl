@@ -81,19 +81,36 @@ function check_pmt_hit(
     hit_positions::AbstractVector,
     hit_directions::AbstractVector,
     hit_wavelengths::AbstractVector,
-    prop_weight::AbstractVector,
     target::DOM,
     orientation::Rotation{3,<:Real})
 
     rotated = Ref(inv(orientation)) .* hit_directions  
     coszeniths = dot.(rotated, Ref([0, 0, -1]))
 
-    wl_acc = target.acceptance.int_wl.(hit_wavelengths)
+    
     ang_acc = target.acceptance.poly_ang.(coszeniths) 
  
-    surv_prob = ang_acc .* prop_weight .* wl_acc
+    surv_prob = ang_acc #.* wl_acc
 
     samples = rand(length(coszeniths))
     accepted = samples .< surv_prob
+
+    pmt_ids = zeros(length(coszeniths))
+    pmt_ids[accepted] .= 1
+
+    return accepted
+end
+
+function apply_wl_acceptance(
+    hit_positions::AbstractVector,
+    hit_directions::AbstractVector,
+    hit_wavelengths::AbstractVector,
+    target::DOM,
+    orientation::Rotation{3,<:Real})
+
+    wl_acc = target.acceptance.int_wl.(hit_wavelengths)
+    samples = rand(length(hit_wavelengths))
+
+    accepted = samples .< wl_acc
     return accepted
 end

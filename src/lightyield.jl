@@ -259,7 +259,7 @@ end
 
 function longitudinal_profile(
     energy, z, medium, ::Type{ptype}) where {ptype<:ParticleType}
-    longitudinal_profile(energy, z, medium, LongitudinalParameterisation(energy, medium, ptype))
+    longitudinal_profile(z, LongitudinalParameterisation(energy, medium, ptype))
 end
 
 """
@@ -386,44 +386,24 @@ function rel_additional_track_length(ref_index, energy)
 end
 
 
-function total_lightyield(::Track, energy::Number, length::Number, medium, wl_range)
+function total_lightyield(::Track, energy::Number, length::Number, medium, spectrum)
 
     # This is probably correct...
     function integrand(wl)
         ref_ix = phase_refractive_index(wl, medium)
-        return frank_tamm(wl, ref_ix) * (1 + rel_additional_track_length(ref_ix, energy))
+        return spectrum.spectrum(wl) * (1 + rel_additional_track_length(ref_ix, energy))
     end
-    T = typeof(energy)
-    total_contrib = integrate_gauss_quad(integrand, wl_range[1], wl_range[2]) * T(1E9) * length
-
-    #=
-    function integrand2(wl)
-        lmu = frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium))
-        ref_ix = refractive_index(wl, medium)
-
-        fadd(wl) = rel_additional_track_length(refractive_index(wl, medium), energy)
-        dfadd(wl) = ForwardDiff.derivative(fadd, wl)
-
-        return (
-            frank_tamm(wl, ref_ix) * (1 + rel_additional_track_length(ref_ix, energy)) * 1E9 +
-            lmu * dfadd(wl)
-        )
-    end
-
-    total_contrib_full = integrate_gauss_quad(integrand2, wl_range[1], wl_range[2]) * length
-    =#
-
-    return total_contrib
+    total_contrib = integrate_gauss_quad(integrand, spectrum.wl_range[1], spectrum.wl_range[2]) *  length
+    return oftype(energy, total_contrib)
 end
 
 
-function total_lightyield(::Track, particle::Particle, medium, wl_range)
-    return total_lightyield(Track(), particle.energy, particle.length, medium, wl_range)
+function total_lightyield(::Track, particle::Particle, medium, spectrum)
+    return total_lightyield(Track(), particle.energy, particle.length, medium, spectrum)
 end
 
-function total_lightyield(::Cascade, particle, medium, wl_range)
-    total_contrib = (
-        frank_tamm_norm(wl_range, wl -> phase_refractive_index(wl, medium)) *
+function total_lightyield(::Cascade, particle, medium, spectrum)
+    total_contrib = (spectrum.spectral_dist.normalization *
         cascade_cherenkov_track_length(particle.energy, particle.type)
     )
     return total_contrib
@@ -431,13 +411,11 @@ end
 
 
 function total_lightyield(
-    particle::Particle{T,PType},
+    particle::Particle,
     medium::MediumProperties,
-    wl_range
-) where {T,PType}
-    return total_lightyield(particle_shape(PType), particle, medium, wl_range)
+    spectrum::Spectrum) 
+    return total_lightyield(particle_shape(particle), particle, medium, spectrum)
 end
-
 
 abstract type PhotonSource{T} end
 
@@ -546,12 +524,12 @@ StructTypes.StructType(::Type{<:ExtendedCherenkovEmitter}) = StructTypes.Struct(
 function ExtendedCherenkovEmitter(
     particle::Particle,
     medium::MediumProperties,
-    wl_range::Tuple{T,T};
+    spectrum::Spectrum;
     oversample=1.0
-) where {T<:Real}
+) 
 
     long_param = LongitudinalParameterisation(particle.energy, medium, particle.type)
-    photons = pois_rand(total_lightyield(particle, medium, wl_range) * oversample)
+    photons = pois_rand(total_lightyield(particle, medium, spectrum) * oversample)
 
     ExtendedCherenkovEmitter(particle.position, particle.direction, particle.time, photons, long_param)
 end
@@ -588,29 +566,33 @@ end
 
 StructTypes.StructType(::Type{<:CherenkovTrackEmitter}) = StructTypes.Struct()
 
-function CherenkovTrackEmitter(particle::Particle{T}, medium::MediumProperties, wl_range::Tuple{T,T}) where {T<:Real}
-    n_photons = pois_rand(total_lightyield(particle, medium, wl_range))
+function CherenkovTrackEmitter(particle::Particle{T}, medium::MediumProperties, spectrum::Spectrum) where {T<:Real}
+    n_photons = pois_rand(total_lightyield(particle, medium, spectrum))
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
 end
 
-function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, wl_range::Tuple{T,T}) where {T<:Real}
+function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, spectrum::Spectrum) where {T<:Real}
 
     lys = Float64[]
     for i in 1:100
         p, secondaries = propagate_muon(particle)
         if length(secondaries) > 0
-            ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+            ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(spectrum)))
         else
             ly_secondaries = 0.
         end
         push!(lys, ly_secondaries)
     end
     ly_secondaries = mean(lys)
-    ly_bare = total_lightyield(particle, medium, wl_range)
+    ly_bare = total_lightyield(particle, medium, spectrum)
     n_photons = pois_rand(ly_secondaries + ly_bare)
     
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
 end
+
+
+
+
 
 
 end

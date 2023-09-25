@@ -106,6 +106,11 @@ end
 
 parsed_args = parse_args(ARGS, s)
 
+# delete outputfile if exists
+if isfile(parsed_args["outfile"])
+    rm(parsed_args["outfile"])
+end
+
 resample_dataset(parsed_args["infile"], parsed_args["outfile"], parsed_args["resample"])
 
 

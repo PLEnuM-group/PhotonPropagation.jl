@@ -15,6 +15,7 @@ export PhotonTarget, PixelatedTarget, SphericalMultiPMTDetector, get_pmt_count
 export HomogeneousDetector, RectangularDetector, CircularDetector
 export check_pmt_hit
 export get_pmt_positions
+export apply_wl_acceptance
 
 """
     TargetShape
@@ -113,6 +114,15 @@ struct HomogeneousDetector{TS <: TargetShape} <: PhotonTarget{TS}
 end
 
 StructTypes.StructType(::Type{<:HomogeneousDetector}) = StructTypes.Struct()
+
+
+struct SphericalHomogeneousDetector{T} <: PhotonTarget{Spherical{T}}
+    shape::Spherical{T}
+    active_area::Float64
+    module_id::UInt16
+end
+
+StructTypes.StructType(::Type{<:SphericalHomogeneousDetector}) = StructTypes.Struct()
 
 struct SphericalMultiPMTDetector{N,L,T,  I} <: PixelatedTarget{Spherical{T}}
     shape::Spherical{T}
@@ -221,7 +231,14 @@ function check_pmt_hit(
 
 end
 
+apply_wl_acceptance(
+    ::AbstractVector,
+    ::AbstractVector,
+    ::AbstractVector,
+    t::PhotonTarget,
+    ::Rotation{3,<:Real}) = error("not implemented for type $(typeof(t))")
 
+    
 abstract type PMTAcceptance end
 
 include("pom.jl")

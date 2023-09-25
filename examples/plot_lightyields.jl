@@ -4,30 +4,37 @@ using StaticArrays
 using CSV
 using DataFrames
 using PhysicsTools
-
+using Random
 
 log_energies = 2:0.1:10
 zs = (0:0.1:20.0)# m
 medium = make_cascadia_medium_properties(0.99)
-wls = 300:1.0:800
+wls = 300:0.1:800
 
-p = plot(wls, frank_tamm.(wls, refractive_index.(wls, Ref(medium))) .* 1E9,
-    xlabel="Wavelength (nm)", ylabel="Photons / (nm ⋅ m)", dpi=150, xlim=(200, 800),
-)
+
 
 water_abs = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/water_absorption_wiki.csv");
     header=[:x, :y], delim=";", decimal=',', type=Float64))
-p = plot!(twinx(p), water_abs[:, :x], 1 ./ water_abs[:, :y], color=:red, xticks=:none,
-    yscale=:log10, ylabel="Absorption length (m)", label="Absorption", ylim=(1E-3, 1E2))
 
-savefig(p, joinpath(@__DIR__, "../figures/ch_spectrum.png"))
+fig = Figure()
+ax = Axis(fig[1, 1], limits=(300, 800, 0, 300))
+ax2 = Axis(fig[1, 1], yaxisposition = :right, ylabel="Absorption length (m)", limits=(300, 800, 0, 100))
+lines!(ax, wls, d.spectrum, label="Frank-Tamm")
+
+lines!(ax, wls, d2.spectrum, label="Frank-Tamm * QE")
+lines!(ax2, water_abs[:, :x], 1 ./ water_abs[:, :y], color=:red, label="Absorption")
+axislegend(ax)
+fig
+save(fig, joinpath(@__DIR__, "../figures/ch_spectrum.png"))
 
 
 # Plot longitudinal profile
-plot(zs, longitudinal_profile.(Ref(1E3), zs, Ref(medium), Ref(PEMinus)), label="1E3 GeV",
+fig, ax, _ = lines(zs, longitudinal_profile.(Ref(1E3), zs, Ref(medium), Ref(PEMinus)), label="1E3 GeV",
     ylabel="PDF", title="Longitudinal Profile", dpi=150)
-p = plot!(zs, longitudinal_profile.(Ref(1E6), zs, Ref(medium), Ref(PEMinus)), label="1E6 GeV",
+lines!(ax, zs, longitudinal_profile.(Ref(1E6), zs, Ref(medium), Ref(PEMinus)), label="1E6 GeV",
     xlabel="Distance along axis (m)")
+axislegend(ax)
+fig
 savefig(p, joinpath(@__DIR__, "../figures/long_profile_comp.png"))
 
 
@@ -48,7 +55,7 @@ tlens = cascade_cherenkov_track_length.((10 .^ log_energies), PEMinus)
 lines(log_energies, tlens,
     axis=(; yscale=log10, xlabel="Log10(E/GeV)", ylabel="Cherenkov track length"))
 
-total_lys = frank_tamm_norm((200.0, 800.0), wl -> refractive_index(wl, medium)) * tlens
+total_lys = frank_tamm_norm((200.0, 800.0), wl ->phase_refractive_index(wl, medium)) * tlens
 
 p = lines(log_energies, total_lys,
     axis=(; yscale=log10, ylabel="Number of photons", xlabel="log10(Energy/GeV)"),
@@ -60,30 +67,14 @@ savefig(p, joinpath(@__DIR__, "../figures/photons_per_energy.png"))
 
 # Calculate light yield for muons
 
-rel_additional_track_length.(refractive_index(800.0, medium), 1E4)
-
-
-plot(log_energies, rel_additional_track_length.(refractive_index(800.0, medium), 10 .^ log_energies) .* frank_tamm(450.0, refractive_index(450.0, medium)) .* 1E9 .* 1E2 / 10)
-
-rel_additional_track_length.(refractive_index(800.0, medium), 10 .^ log_energies)
-
-
-wl_range = (300.0, 800.0)
-total_lys = total_lightyield.(Ref(Track()), 10 .^ log_energies, 1.0, Ref(medium), Ref(wl_range))
-total_lys_simple = frank_tamm_norm(wl_range, wl -> refractive_index(wl, medium)) .* (1 .+ rel_additional_track_length.(refractive_index(400.0, medium), 10 .^ log_energies))
-
-fig = Figure()
-ax = Axis(fig[1, 1], xlabel="log10(E/GeV)", ylabel="Ratio")
-lines!(ax, log_energies, total_lys)
-#hlines!(total_lys_single, color=:red)
-fig
+lines(log_energies, rel_additional_track_length.(phase_refractive_index(800.0, medium), 10 .^ log_energies) .* frank_tamm(450.0, phase_refractive_index(450.0, medium)) .* 1E9 .* 1E2 / 10)
 
 
 lambdas = 200:1.0:800
 
-plot(lambdas, refractive_index.(lambdas, Ref(medium)))
-plot(lambdas, dispersion.(lambdas, Ref(medium)))
-plot(group_velocity.(lambdas, Ref(medium)))
+lines(lambdas, phase_refractive_index.(lambdas, Ref(medium)))
+lines(lambdas, dispersion.(lambdas, Ref(medium)))
+lines(group_velocity.(lambdas, Ref(medium)))
 
 
 
@@ -113,15 +104,30 @@ for le in log_energies
 end
 
 data = DataFrame(data)
-
 fig, ax, lin = lines(data[:, :log_energy], log10.(data[:, :mean_ly]))
-
 coeffs = poly_fit(data[:, :log_energy], log10.(data[:, :mean_ly]), 4)
-
 lines!(ax, log_energies, Polynomial(coeffs).(log_energies))
 fig
-
-
 fig, ax, lin = lines(data[:, :log_energy], (data[:, :mean_ly]))
 lines!(ax, log_energies, 10 .^Polynomial(coeffs).(log_energies))
 fig
+
+
+dom = DOM(SA[0., 0., 0.], 1)
+
+
+d = make_cherenkov_spectrum((300., 800.), medium)
+d2 = make_biased_cherenkov_spectrum(dom.acceptance.int_wl, (300., 800.), medium)
+
+fig, ax, _ = hist(rand(d.spectral_dist, 100000), normalization=:pdf)
+hist!(ax, rand(d2.spectral_dist, 100000), normalization=:pdf)
+fig
+
+
+p = Particle(SA[0., 0., 0.], SA[0., 0., 1.], 0., 1E5, 0., PEMinus)
+em = ExtendedCherenkovEmitter(p, medium, d2)
+
+tlen = cascade_cherenkov_track_length(1E5, PEMinus)
+
+
+em.photons / (frank_tamm_norm((300.0, 800.0), wl ->phase_refractive_index(wl, medium)) * tlen)

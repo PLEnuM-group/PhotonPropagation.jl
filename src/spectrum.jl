@@ -1,13 +1,14 @@
 
 module Spectral
 
-export Spectrum, Monochromatic, CherenkovSpectralDist, CherenkovSpectrum
-export frank_tamm, frank_tamm_norm, frank_tamm_inverted_cdf
+export Spectrum, Monochromatic, SpectralDist, InterpolatedSpectralDist
+export make_cherenkov_spectral_dist, make_biased_cherenkov_spectral_dist
+export make_cuda_spectral_dist
+export make_cherenkov_spectrum, make_biased_cherenkov_spectrum, make_monochromatic_spectrum
 
 using Distributions
 using Adapt
 using Interpolations
-using PhysicalConstants.CODATA2018
 using Unitful
 using Random
 using StaticArrays
@@ -17,99 +18,84 @@ using PhysicsTools
 using StructTypes
 using ..Medium
 
+abstract type SpectralDist <: Sampleable{Univariate,Continuous} end
+Base.rand(::AbstractRNG, d::SpectralDist) = error("not implemented for type $(typeof(d))")
+Base.rand(d::SpectralDist) = rand(Random.default_rng(), d)
 
-abstract type Spectrum end
-
-struct Monochromatic{T} <: Spectrum
-    wavelength::T
+struct InterpolatedSpectralDist{A, T} <: SpectralDist
+    interpolated_cdf::A
+    normalization::T
 end
 
-StructTypes.StructType(::Type{<:Monochromatic}) = StructTypes.Struct()
+StructTypes.StructType(::Type{<:InterpolatedSpectralDist}) = StructTypes.Struct()
 
+Adapt.@adapt_structure InterpolatedSpectralDist
 
-"""
-    frank_tamm(wavelength::Real, ref_index::T) where {T<:Real}
-
-Evaluate Frank-Tamm formula
-"""
-function frank_tamm(wavelength::Real, ref_index::T) where {T<:Real}
-    return T(2 * pi * FineStructureConstant / wavelength^2 * (1 - 1 / ref_index^2))
-end
-
-"""
-    frank_tamm_norm(wl_range::Tuple{T, T}, ref_index_func::Function) where {T<:Real}
-
-Calculate number of Cherenkov photons per length in interval `wl_range`.
-Returned number is in units m^-1.
-"""
-function frank_tamm_norm(wl_range::Tuple{T,T}, ref_index_func::Function) where {T<:Real}
-    f(x) = frank_tamm(x, ref_index_func(x))
-    integrate_gauss_quad(f, wl_range[1], wl_range[2]) * T(1E9)
-end
+Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist) = d.interpolated_cdf(rand(rng))
+Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist{<:CuTexture}) = @inbounds d.interpolated_cdf[rand(rng)]
+Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist{<:CuDeviceTexture}) = @inbounds d.interpolated_cdf[rand(rng)]
 
 
 
-"""
-    frank_tamm_inverted_cdf(wl_range, step_size)
-
-Return the inverted CDF of the Frank-Tamm Spectrum in range `wl_range` evaluated with
-step size `step_size`.
-"""
-function frank_tamm_inverted_cdf(wl_range::Tuple{T,T}, medium::MediumProperties, step_size::T=T(1)) where {T}
+function make_spectral_dist(spect_func, wl_range::Tuple{T, T}, step_size::T=T(1)) where {T <: Real}
     wl_steps = wl_range[1]:step_size:wl_range[2]
 
     norms = Vector{T}(undef, size(wl_steps, 1))
     norms[1] = 0
 
-    full_norm = frank_tamm_norm(wl_range, wl -> phase_refractive_index(wl, medium))
+    full_norm = integrate_gauss_quad(spect_func, wl_range[1], wl_range[2], 25)
 
     for i in eachindex(wl_steps)[2:end]
         step = wl_steps[i]
-        norms[i] = frank_tamm_norm((wl_range[1], step), wl -> phase_refractive_index(wl, medium)) / full_norm
+        norms[i] = integrate_gauss_quad(spect_func, wl_range[1], step, 25) / full_norm
     end
 
     sorting = sortperm(norms)
-
-    return norms[sorting], wl_steps[sorting]
-end
-
-
-struct CherenkovSpectralDist <: Sampleable{Univariate,Continuous}
-    interpolation
-    wl_range::Tuple{Float64,Float64}
-
-    function CherenkovSpectralDist(wl_range::Tuple{T,T}, medium::MediumProperties) where {T<:Real}
-
-        norms, wl_steps = frank_tamm_inverted_cdf(wl_range, medium)
-        p = LinearInterpolation(norms, wl_steps)
-        new(p, wl_range)
-    end
+    return InterpolatedSpectralDist(linear_interpolation(norms[sorting], wl_steps[sorting], extrapolation_bc=zero(T)), full_norm)
 
 end
 
-Base.:rand(rng::AbstractRNG, s::CherenkovSpectralDist) = s.interpolation(rand(rng))
 
-struct CherenkovSpectrum{T<:Real,A} <: Spectrum
-    wl_range::Tuple{T,T}
-    texture::A
 
-    function CherenkovSpectrum(wl_range::Tuple{T,T}, texture::A) where {T<:Real,A}
-        new{T,A}(wl_range, texture)
-    end
-
-    function CherenkovSpectrum(wl_range::Tuple{T,T}, medium::MediumProperties, interp_steps::Integer=30) where {T<:Real}
-        spec = CherenkovSpectralDist(wl_range, medium)
-        eval_knots = range(T(0), T(1), interp_steps)
-        knots = spec.interpolation(eval_knots)
-
-        spectrum_vals = CuTextureArray(knots)
-        spectrum_texture = CuTexture(spectrum_vals; interpolation=CUDA.LinearInterpolation(), normalized_coordinates=true)
-
-        return new{T,typeof(spectrum_texture)}(wl_range, spectrum_texture)
-    end
-
+struct Monochromatic{T} <: SpectralDist
+    wavelength::T
 end
 
-Adapt.@adapt_structure CherenkovSpectrum
+Base.rand(::AbstractRNG, d::Monochromatic) = d.wavelength
+StructTypes.StructType(::Type{<:Monochromatic}) = StructTypes.Struct()
+Adapt.@adapt_structure Monochromatic
+
+
+function make_cuda_spectral_dist(spec::SpectralDist, wl_range::Tuple{T, T}, interp_steps::Integer=30) where {T<:Real}
+
+    eval_knots = range(zero(T), one(T), interp_steps)
+    knots = spec.interpolated_cdf(eval_knots)
+    spectrum_vals = CuTextureArray(knots)
+    spectrum_texture = CuTexture(spectrum_vals; interpolation=CUDA.LinearInterpolation(), normalized_coordinates=true)
+
+    return InterpolatedSpectralDist(spectrum_texture, spec.normalization)
+end
+
+struct Spectrum{D <: SpectralDist, S, T<:Real}
+    spectral_dist::D
+    spectrum::S
+    wl_range::Tuple{T, T}
+end
+
+function make_cherenkov_spectrum(wl_range, medium)
+    sfunc = wl -> frank_tamm(wl, phase_refractive_index(wl, medium)) * 1E9
+    d = make_spectral_dist(sfunc, wl_range)
+    return Spectrum(d, sfunc, wl_range)
+end
+
+function make_biased_cherenkov_spectrum(bias_function, wl_range, medium)
+    sfunc = wl -> frank_tamm(wl, phase_refractive_index(wl, medium)) * bias_function(wl)  * 1E9
+    d = make_spectral_dist(sfunc, wl_range)
+    return Spectrum(d, sfunc, wl_range)
+end
+
+function make_monochromatic_spectrum(wl)
+    return Spectrum(Monochromatic(wl), w -> w == wl ? 1 : 0, (zero(wl), one(wl)))
+end
 
 end

@@ -17,7 +17,8 @@ using PhysicsTools
 export cuda_propagate_photons!, initialize_photon_arrays, process_output
 export cuda_propagate_multi_target!, check_intersection
 export cherenkov_ang_dist, cherenkov_ang_dist_int
-export run_photon_prop_no_local_cache
+export run_photon_prop_no_local_cache!
+export make_hit_buffers
 export PhotonHit
 
 
@@ -30,39 +31,15 @@ using ..LightYield
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 
 
-
-
 """
     uniform(minval::T, maxval::T) where {T}
 
 Convenience function for sampling uniform values in [minval, maxval]
 """
-@inline function uniform(minval::T, maxval::T) where {T}
+function uniform(minval::T, maxval::T) where {T}
     uni = rand(T)
     return minval + uni * (maxval - minval)
 end
-
-"""
-    cuda_hg_scattering_func(g::Real)
-
-CUDA-optimized version of Henyey-Greenstein scattering in one plane.
-
-# Arguments
-- `g::Real`: mean scattering angle
-
-# Returns
-- `typeof(g)` cosine of a scattering angle sampled from the distribution
-
-"""
-@inline function cuda_hg_scattering_func(g::Real)
-    T = typeof(g)
-    """Henyey-Greenstein scattering in one plane."""
-    eta = rand(T)
-    #costheta::T = (1 / (2 * g) * (1 + g^2 - ((1 - g^2) / (1 + g * (2 * eta - 1)))^2))
-    costheta::T = (1 / (2 * g) * (fma(g, g, 1) - (fma(-g, g, 1) / (fma(g, (fma(2, eta, -1)), 1)))^2))
-    return clamp(costheta, T(-1), T(1))
-end
-
 
 struct PhotonState{T,U}
     position::SVector{3,T}
@@ -84,14 +61,14 @@ Sample a direction isotropically
 - StaticVector{3, T}: Cartesian coordinates of the sampled direction
 
 """
-@inline function initialize_direction_isotropic(T::Type)
+function initialize_direction_isotropic(T::Type)
     theta = acos(uniform(T(-1), T(1)))
     phi = uniform(T(0), T(2 * pi))
     sph_to_cart(theta, phi)
 end
 
 
-@inline function sample_cherenkov_direction(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
+function sample_cherenkov_direction(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
 
     # Sample a photon direction. Assumes track is aligned with e_z
     theta_cherenkov = cherenkov_angle(wl, medium)
@@ -112,28 +89,23 @@ end
 end
 
 
-@inline initialize_wavelength(::T) where {T<:Spectrum} = throw(ArgumentError("Cannot initialize $T"))
-@inline initialize_wavelength(spectrum::Monochromatic{T}) where {T} = spectrum.wavelength
-@inline initialize_wavelength(spectrum::CherenkovSpectrum{T,P}) where {T,P} = @inbounds spectrum.texture[rand(T)]
-
-
-@inline function initialize_photon_state(source::PointlikeIsotropicEmitter{T}, ::MediumProperties, spectrum::Spectrum) where {T<:Real}
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::PointlikeIsotropicEmitter{T}, ::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
     pos = source.position
     dir = initialize_direction_isotropic(T)
     PhotonState(pos, dir, source.time, wl)
 end
 
-@inline function initialize_photon_state(source::PointlikeTimeRangeEmitter{T,U}, ::MediumProperties, spectrum::Spectrum) where {T<:Real,U<:Real}
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::PointlikeTimeRangeEmitter{T,U}, ::MediumProperties, spectrum::SpectralDist) where {T<:Real,U<:Real}
+    wl = rand(spectrum)
     pos = source.position
     dir = initialize_direction_isotropic(T)
     time = uniform(source.time_range[1], source.time_range[2])
     PhotonState(pos, dir, time, wl)
 end
 
-@inline function initialize_photon_state(source::AxiconeEmitter{T}, ::MediumProperties, spectrum::Spectrum) where {T<:Real}
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::AxiconeEmitter{T}, ::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
     pos = source.position
     phi = uniform(T(0), T(2 * pi))
     theta = source.angle
@@ -142,8 +114,8 @@ end
     PhotonState(pos, dir, source.time, wl)
 end
 
-@inline function initialize_photon_state(source::PencilEmitter{T}, ::MediumProperties, spectrum::Spectrum) where {T<:Real}
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::PencilEmitter{T}, ::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
     if source.beam_divergence > 0
 
         theta = sqrt(uniform(zero(T), source.beam_divergence^2))
@@ -156,9 +128,8 @@ end
 end
 
 
-@inline function initialize_photon_state(source::ExtendedCherenkovEmitter{T}, medium::MediumProperties, spectrum::Spectrum) where {T<:Real}
-    #wl = initialize_wavelength(source.spectrum)
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::ExtendedCherenkovEmitter{T}, medium::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
 
     long_pos = rand_gamma(T(source.long_param.a), T(1 / source.long_param.b), Float32) * source.long_param.lrad
 
@@ -170,9 +141,8 @@ end
     PhotonState(pos, ph_dir, time, wl)
 end
 
-@inline function initialize_photon_state(source::PointlikeCherenkovEmitter{T}, medium::MediumProperties, spectrum::Spectrum) where {T<:Real}
-    #wl = initialize_wavelength(source.spectrum)
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::PointlikeCherenkovEmitter{T}, medium::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
 
     pos::SVector{3,T} = source.position
     time = source.time
@@ -182,8 +152,8 @@ end
     PhotonState(pos, ph_dir, time, wl)
 end
 
-@inline function initialize_photon_state(source::CherenkovTrackEmitter{T}, medium::MediumProperties, spectrum::Spectrum) where {T<:Real}
-    wl = initialize_wavelength(spectrum)
+function initialize_photon_state(source::CherenkovTrackEmitter{T}, medium::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
 
     pos_along = uniform(T(0), T(source.length))
     pos::SVector{3,T} = source.position .+ pos_along .* source.direction
@@ -197,14 +167,14 @@ end
 
 
 
-@inline function update_direction(this_dir::SVector{3,T}, medium::MediumProperties) where {T}
+function update_direction(this_dir::SVector{3,T}, medium::MediumProperties) where {T}
     #=
     Update the photon direction using scattering function.
     =#
 
     # Calculate new direction (relative to e_z)
-    cos_sca_theta = cuda_hg_scattering_func(mean_scattering_angle(medium))
-    sin_sca_theta = sqrt(fma(-cos_sca_theta, cos_sca_theta, 1))
+    cos_sca_theta = scattering_function(medium)
+    sin_sca_theta = sqrt(1 - cos_sca_theta^2)
     sca_phi = uniform(T(0), T(2 * pi))
 
     sin_sca_phi, cos_sca_phi = sincos(sca_phi)
@@ -218,7 +188,7 @@ end
 end
 
 
-@inline function update_position(pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T}
+function update_position(pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T}
     # update position
     #return @SVector[pos[j] + dir[j] * step_size for j in 1:3]
     #return @SVector[CUDA.fma(step_size, dir[j], pos[j]) for j in 1:3]
@@ -226,7 +196,7 @@ end
 end
 
 
-@inline function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
     target_pos = target_shape.position
     target_rsq = target_shape.radius^2
 
@@ -266,7 +236,7 @@ end
 
 end
 
-@inline function check_intersection(target_shape::Rectangular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+function check_intersection(target_shape::Rectangular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
 
     dir_normal = dir[3]
 
@@ -291,7 +261,7 @@ end
 
 end
 
-@inline function check_intersection(target_shape::Circular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+function check_intersection(target_shape::Circular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
 
     dir_normal = dir[3]
 
@@ -334,7 +304,7 @@ function cuda_propagate_photons!(
     out_err_code::CuDeviceVector{Int32},
     seed::Int64,
     source::PhotonSource,
-    spectrum::Spectrum,
+    spectrum::SpectralDist,
     targets::CuDeviceVector{<:TargetShape},
     medium::MediumProperties{T},
     nsteps::Int32) where {T}
@@ -348,7 +318,7 @@ function cuda_propagate_photons!(
     n_threads_total = (griddim * blockdim)
     global_thread_index::Int32 = (block - Int32(1)) * blockdim + thread
 
-    out_err_code[1] = 0
+    err_code::Int32 = 0
 
     Random.seed!(seed + global_thread_index)
 
@@ -362,13 +332,9 @@ function cuda_propagate_photons!(
     n_photons_simulated = Int64(0)
 
     @inbounds for i in 1:this_n_photons
-        # Check if there's enough space in the output vector
-        if out_stack_pointer[1] >= length(out_hits)-1
-            # not enough space
-            out_err_code[1] = 1
+        if err_code == 1
             break
         end
-        
         photon_state = initialize_photon_state(source, medium, spectrum)
 
         dir::SVector{3,T} = photon_state.direction
@@ -382,7 +348,7 @@ function cuda_propagate_photons!(
         sca_len::T = scattering_length(wavelength, medium)
 
         c_grp::T = group_velocity(wavelength, medium)
-        
+
         for nstep in Int32(1):nsteps
 
             eta = rand(T)
@@ -416,8 +382,14 @@ function cuda_propagate_photons!(
             dist_travelled += dist_to_target
             time += dist_to_target / c_grp
 
+            if out_stack_pointer[1] >= length(out_hits)
+                err_code = 1
+                break
+            end
+
             stack_idx::Int64 = CUDA.atomic_add!(pointer(out_stack_pointer, 1), Int64(1))
-            CUDA.@cuassert stack_idx <= length(out_hits) "Stack overflow"
+            # Check if there's enough space in the output vector
+            
 
             out_hits.position[stack_idx] = pos
             out_hits.direction[stack_idx] = dir
@@ -426,15 +398,17 @@ function cuda_propagate_photons!(
             out_hits.wavelength[stack_idx] = wavelength
             out_hits.dist_travelled[stack_idx] = dist_travelled
             out_hits.module_id[stack_idx] = module_ix
-
             break
        
         end
-        n_photons_simulated += 1
+        if err_code == 0
+            n_photons_simulated += 1
+        end
 
     end
 
     CUDA.atomic_add!(pointer(out_n_ph_simulated, 1), n_photons_simulated)
+    CUDA.atomic_or!(pointer(out_err_code, 1), err_code)
     
     
     return nothing
@@ -621,19 +595,32 @@ function calculate_max_stack_size(total_mem, pos_type, time_type)
 end
 
 
-function run_photon_prop_no_local_cache(
-    sources::AbstractVector{<:PhotonSource},
-    targets::AbstractVector{<:TargetShape},
-    medium::MediumProperties,
-    spectrum::Spectrum,
-    seed::Int64;
-    time_type::Type=Float32,
-    n_steps=15)
+function make_hit_buffers(time_type::Type=Float32, reserved_memory_fraction=0.7)
     avail_mem = CUDA.totalmem(collect(CUDA.devices())[1])
-    max_total_stack_len = calculate_max_stack_size(0.8 * avail_mem, Float32, time_type)
+    max_total_stack_len = calculate_max_stack_size(reserved_memory_fraction * avail_mem, Float32, time_type)
 
     photon_hits_cpu = StructArray{PhotonHit{Float32,time_type}}(undef, max_total_stack_len)
     photon_hits_gpu = replace_storage(CuVector, photon_hits_cpu)
+
+    return photon_hits_cpu, photon_hits_gpu
+end
+
+
+function run_photon_prop_no_local_cache!(
+    sources::AbstractVector{<:PhotonSource},
+    targets::AbstractVector{<:TargetShape},
+    medium::MediumProperties,
+    spectrum::SpectralDist,
+    seed::Int64,
+    photon_hits_cpu::StructArray{PhotonHit{Float32,time_type}},
+    photon_hits_gpu::StructArray{PhotonHit{Float32,time_type}}; 
+    n_steps=15) where {time_type <: Real}
+    
+    #avail_mem = CUDA.totalmem(collect(CUDA.devices())[1])
+    #max_total_stack_len = calculate_max_stack_size(0.8 * avail_mem, Float32, time_type)
+
+    #photon_hits_cpu = StructArray{PhotonHit{Float32,time_type}}(undef, max_total_stack_len)
+    #photon_hits_gpu = replace_storage(CuVector, photon_hits_cpu)
 
     stack_idx = CuVector(ones(Int64, 1))
     n_ph_sim = CuVector(zeros(Int64, 1))
@@ -660,7 +647,6 @@ function run_photon_prop_no_local_cache(
             @error "Photon prop ran out of memory. Photon stats may be reduced"
         end
 
-        
     end
 
     stack_idx = Vector(stack_idx)[1]
@@ -672,7 +658,7 @@ function run_photon_prop_no_local_cache(
     for (key, s) in pairs(StructArrays.components(photon_hits_gpu))
         copyto!(StructArrays.component(photon_hits_cpu, key), s)
     end
-    photon_hits_cpu = photon_hits_cpu[1:stack_idx-1]
+    @views photon_hits_cpu = photon_hits_cpu[1:stack_idx-1]
 
     #photon_hits = replace_storage(Vector, photon_hits)[1:stack_idx-1]
 

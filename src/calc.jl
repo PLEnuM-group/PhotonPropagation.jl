@@ -17,7 +17,7 @@ const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 export calc_time_residual!, calc_tgeo
 export calc_time_residual_tracks!, calc_tgeo_tracks
 export shift_to_closest_approach
-export closest_approach_distance
+export closest_approach_distance, closest_approach_param
 
 
 calc_tgeo(distance, c_n::Number) = distance / c_n

@@ -5,7 +5,7 @@ using Rotations
 using LinearAlgebra
 using StaticArrays
 using StructTypes
-
+using Distributions
 using ..Medium
 using ..Spectral
 using ..Detection
@@ -18,21 +18,34 @@ export make_hits_from_photons, propagate_photons
 export calc_total_weight!
 export calc_number_of_steps
 
-mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVector{<:PhotonTarget},M<:MediumProperties,C<:Spectrum}
+mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVector{<:PhotonTarget},M<:MediumProperties,C<:SpectralDist}
     sources::SV
     targets::ST
     medium::M
-    spectrum::C
+    spec_dist::C
     seed::Int64
-    
 end
 
-PhotonPropSetup(
+function PhotonPropSetup(sources::AbstractVector{<:PhotonSource}, targets::AbstractVector{<:PhotonTarget}, medium, spectrum::Spectrum{<:InterpolatedSpectralDist}, seed) 
+    cuda_spectral_dist = make_cuda_spectral_dist(spectrum.spectral_dist, spectrum.wl_range)
+    return PhotonPropSetup(sources, targets, medium, cuda_spectral_dist, seed)
+end
+
+function PhotonPropSetup(sources::AbstractVector{<:PhotonSource}, targets::AbstractVector{<:PhotonTarget}, medium, spectrum::Spectrum, seed) 
+    return PhotonPropSetup(sources, targets, medium, spectrum.spectral_dist, seed)
+end
+
+function PhotonPropSetup(
     source::PhotonSource,
     target::PhotonTarget,
-    medium::MediumProperties,
-    spectrum::Spectrum,
-    seed) = PhotonPropSetup([source], [target], medium, spectrum, Int64(seed))
+    medium,
+    spectrum,
+    seed)
+
+    setup = PhotonPropSetup([source], [target], medium, spectrum, Int64(seed))
+    return setup
+end
+
 
 function calc_total_weight!(df::AbstractDataFrame, setup::PhotonPropSetup)
 
@@ -41,19 +54,27 @@ function calc_total_weight!(df::AbstractDataFrame, setup::PhotonPropSetup)
     end
 
     abs_length = absorption_length.(df[:, :wavelength], Ref(setup.medium))
-    df[!, :abs_weight] = convert(Vector{Float64}, exp.(-df[:, :dist_travelled] ./ abs_length))
+    df[!, :abs_weight] = exp.(-Float64.(df[:, :dist_travelled] ./ abs_length))
     #df[!, :ref_ix] = refractive_index.(df[:, :wavelength], Ref(setup.medium))
     df[!, :total_weight] = df[:, :base_weight] .* df[:, :abs_weight]
 
     return df
 end
 
-function propagate_photons(setup::PhotonPropSetup, steps=15)
 
-    hits, n_ph_sim = run_photon_prop_no_local_cache(
-        setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spectrum, setup.seed, n_steps=steps)
+function propagate_photons(setup::PhotonPropSetup, steps=15; reserved_memory_fraction=0.7)
+    hit_buffer_cpu, hit_buffer_gpu = make_hit_buffers(Float32, reserved_memory_fraction)
+    return propagate_photons(setup, hit_buffer_cpu, hit_buffer_gpu, steps)
+end
 
-    df = DataFrame(hits)
+function propagate_photons(setup::PhotonPropSetup, hit_buffer_cpu, hit_buffer_gpu, steps=15)   
+
+    hits, n_ph_sim = run_photon_prop_no_local_cache!(
+        setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spec_dist, setup.seed,
+        hit_buffer_cpu, hit_buffer_gpu, n_steps=steps,
+        )
+
+    df = DataFrame(hits, copycols=false)
 
     mod_ids = [targ.module_id for targ in setup.targets]
     df[!, :module_id] .= mod_ids[df[:, :module_id]]
@@ -77,9 +98,10 @@ Convert photons to pmt_hits.
 function make_hits_from_photons(
     df::AbstractDataFrame,
     setup::PhotonPropSetup,
-    target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
+    target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I),
+    apply_wl_acc=true)
 
-    return make_hits_from_photons(df, setup.targets, target_orientation)
+    return make_hits_from_photons(df, setup.targets, target_orientation, apply_wl_acc)
 end
 
 
@@ -95,7 +117,8 @@ Convert photons to pmt_hits. Does not yet apply propagation weights.
 function make_hits_from_photons(
     df::AbstractDataFrame,
     targets::AbstractArray{<:PhotonTarget},
-    target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I))
+    target_orientation::AbstractMatrix{<:Real}=RotMatrix3(I),
+    apply_wl_acc=true)
 
     targ_id_map = Dict([target.module_id => target for target in targets])
 
@@ -116,9 +139,12 @@ function make_hits_from_photons(
         dir::Vector{SVector{3, Float64}} = directions
         wl::Vector{Float64} = subdf[:, :wavelength]
         pmt_ids = check_pmt_hit(pos, dir, wl, target, target_orientation)
-
         mask = pmt_ids .> 0
-        
+
+        if apply_wl_acc
+            mask .&= apply_wl_acceptance(pos, dir, wl, target, target_orientation)
+        end
+
         h = DataFrame(copy(subdf[mask, :]))
         h[!, :pmt_id] .= pmt_ids[mask]
         push!(hits, h)

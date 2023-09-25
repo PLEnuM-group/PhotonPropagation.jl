@@ -244,6 +244,18 @@ function check_pmt_hit(
 end
 =#
 
+function apply_wl_acceptance(
+    hit_positions::AbstractVector,
+    hit_directions::AbstractVector,
+    hit_wavelengths::AbstractVector,
+    target::POM,
+    orientation::Rotation{3,<:Real})
+
+    # This is currently factored into the check_pmt_hit function
+    accepted = ones(Bool, size(hit_wavelengths))
+    return accepted
+end
+
 function check_pmt_hit(
     hit_positions::AbstractVector,
     hit_directions::AbstractVector,

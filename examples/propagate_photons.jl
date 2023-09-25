@@ -31,7 +31,7 @@ mean_sca_angle = 0.95f0
 medium = make_cascadia_medium_properties(mean_sca_angle)
 
 # Setup spectrum
-spectrum = Monochromatic(450f0)
+spectrum = make_monochromatic_spectrum(450f0)
 
 seed = 1
 
@@ -39,8 +39,18 @@ seed = 1
 setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 
 # Run propagation
-photons = propagate_photons(setup)
 
+alloc = @allocated photons = propagate_photons(setup)
+alloc / 1024 / 1024
+
+rand(setup.spec_dist)
+
+hbc, hbg = make_hit_buffers()
+
+alloc = @allocated photons = propagate_photons(setup, hbc, hbg)
+alloc / 1024 / 1024
+
+CUDA.reclaim()
 
 # Propagate photons from an EM Cascade
 energy = Float32(1E5)
@@ -138,19 +148,42 @@ direction = sph_to_cart(theta, phi)
 pos = SA_F32[0., 0., 0.]
 p = Particle(pos, direction, 0f0, energy, 400f0, PMuPlus)
 wl_range = (300f0, 800f0)
+
 medium_ice = make_homogenous_clearice_properties()
-source_muon = LightsabreMuonEmitter(p, medium_ice, wl_range)
+spectrum = make_cherenkov_spectrum(wl_range, medium_ice)
+spectrum_biased = make_biased_cherenkov_spectrum(target.acceptance.int_wl, wl_range, medium_ice)
+
+source_muon = LightsabreMuonEmitter(p, medium_ice, spectrum)
+source_muon_biased = LightsabreMuonEmitter(p, medium_ice, spectrum_biased)
+
 seed = 1
-spectrum = CherenkovSpectrum(wl_range, medium_ice)
+
 setup = PhotonPropSetup([source_muon], [target], medium_ice, spectrum, seed)
+hbc, hbg = make_hit_buffers()
+photons = propagate_photons(setup, hbc, hbg)
+hits = make_hits_from_photons(photons, setup, RotMatrix3(I), true)
 
-photons = propagate_photons(setup)
 
-hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
+setup_biased = PhotonPropSetup([source_muon_biased], [target], medium_ice, spectrum_biased, seed)
+photons_biased = propagate_photons(setup_biased, hbc, hbg)
+hits_biased = make_hits_from_photons(photons_biased, setup, RotMatrix3(I), false)
+
 
 zen = cos.(hits[:, :dir_z])
 
-hist(zen)
+fig, ax, _ = hist(cos.(hits[:, :dir_z]), weights=hits[:, :total_weight])
+hist!(ax, cos.(hits_biased[:, :dir_z]), weights=hits_biased[:, :total_weight])
+fig
+
+fig, ax, _ = hist(hits[:, :time], weights=hits[:, :total_weight])
+hist!(ax, hits_biased[:, :time], weights=hits_biased[:, :total_weight])
+fig
+
+
+
+
+
+
 
 
 # Save output

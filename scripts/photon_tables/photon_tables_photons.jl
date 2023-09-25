@@ -11,6 +11,7 @@ using Sobol
 using ArgParse
 using PhysicsTools
 using JSON3
+import Base.GC.gc
 
 include("utils.jl")
 
@@ -36,8 +37,11 @@ function run_sim(
     dir_phi,
     output_fname,
     seed,
+    hit_buffer_cpu,
+    hit_buffer_gpu,
     mode=:extended,
-    g=0.95)
+    g=0.95,
+    )
 
     direction::SVector{3,Float32} = sph_to_cart(acos(dir_costheta), dir_phi)
 
@@ -83,7 +87,7 @@ function run_sim(
             println("More than 1E13 photons, skipping")
             return nothing
         end
-        photons = propagate_photons(setup)
+        photons = propagate_photons(setup, hit_buffer_cpu, hit_buffer_gpu)
 
         if nrow(photons) > 100
             break
@@ -136,6 +140,8 @@ function run_sims(parsed_args)
     dist_max = parsed_args["dist_max"]
     g = parsed_args["g"]
 
+    hbc, hbg = make_hit_buffers()
+
     if mode == :extended || mode == :lightsabre_muon
         sobol = skip(
             SobolSeq(
@@ -152,7 +158,8 @@ function run_sims(parsed_args)
             dir_costheta = pars[3]
             dir_phi = pars[4]
 
-            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, mode, g)
+            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, hbc, hbg, mode, g)
+            gc()
         end
     elseif mode == :bare_infinite_track
         sobol = skip(
@@ -169,7 +176,8 @@ function run_sims(parsed_args)
             dir_costheta = pars[2]
             dir_phi = pars[3]
 
-            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, mode, g)
+            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, hbc, hbg, mode, g)
+            gc()
         end
         
     else
@@ -184,7 +192,8 @@ function run_sims(parsed_args)
             dir_costheta = pars[2]
             dir_phi = 0
 
-            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, mode, g)
+            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip,  hbc, hbg, mode, g,)
+            gc()
         end
     end
 end

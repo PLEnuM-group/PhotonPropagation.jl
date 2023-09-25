@@ -7,8 +7,11 @@ See: https://user-web.icecube.wisc.edu/~dima/work/WISC/ppc/spice/new/paper/a.pdf
 ### Fields:
 -radiation_length -- Radiation length (g/cm^2)
 -mean_scattering_angle -- Cosine of the mean scattering angle
+-hg_fraction -- Mixture weight of the HG component
 -A_SPICE -- A parameter of the SPICE model
 -B_SPICE -- B parameter of the SPICE model
+-D_SPICE -- B parameter of the SPICE model
+-E_SPICE -- B parameter of the SPICE model
 -a_dust_400 -- Absorption coefficient at 400nm
 -b_dust_400 -- Scattering coefficient at 400nm
 -alpha_sca_dust -- Alpha parameter of the SPICE model
@@ -18,8 +21,11 @@ See: https://user-web.icecube.wisc.edu/~dima/work/WISC/ppc/spice/new/paper/a.pdf
 Base.@kwdef struct HomogenousIceProperties{T<:Real} <: MediumProperties{T}
     radiation_length::T # g / cm^2
     mean_scattering_angle::T
+    hg_fraction::T
     A_SPICE::T
     B_SPICE::T
+    D_SPICE::T
+    E_SPICE::T
     a_dust_400::T
     b_dust_400::T
     alpha_sca_dust::T
@@ -34,10 +40,13 @@ StructTypes.StructType(::Type{<:HomogenousIceProperties}) = StructTypes.Struct()
 Ice properties for the "homogenous clear ice model"
 """
 make_homogenous_clearice_properties() = HomogenousIceProperties(
-    radiation_length=0.358/0.9216,
+    radiation_length=39.652/0.9216,
     mean_scattering_angle=0.9,
+    hg_fraction=0.45,
     A_SPICE=6954.090332031250,
     B_SPICE=6617.754394531250,
+    D_SPICE=0.,
+    E_SPICE=0.,
     a_dust_400=0.006350013,
     b_dust_400=0.02331206666666667,
     alpha_sca_dust=0.898608505726,
@@ -47,6 +56,8 @@ make_homogenous_clearice_properties() = HomogenousIceProperties(
 
 radiation_length(x::HomogenousIceProperties) = x.radiation_length
 mean_scattering_angle(x::HomogenousIceProperties) = x.mean_scattering_angle
+hg_fraction(x::HomogenousIceProperties) = x.hg_fraction
+material_density(::HomogenousIceProperties) = 0.910 * 1000
 b_dust_400(x::HomogenousIceProperties) = x.b_dust_400
 a_dust_400(x::HomogenousIceProperties) = x.a_dust_400
 alpha_sca_dust(x::HomogenousIceProperties) = x.alpha_sca_dust
@@ -54,6 +65,8 @@ kappa_abs_dust(x::HomogenousIceProperties) = x.kappa_abs_dust
 deltaTSPICE(x::HomogenousIceProperties) = x.deltaTSPICE
 A_SPICE(x::HomogenousIceProperties) = x.A_SPICE
 B_SPICE(x::HomogenousIceProperties) = x.B_SPICE
+D_SPICE(x::HomogenousIceProperties) = x.D_SPICE
+E_SPICE(x::HomogenousIceProperties) = x.E_SPICE
 
 """
     _ice_phase_refractive_index(wavelength)
@@ -65,6 +78,8 @@ function _ice_phase_refractive_index(wavelength)
     wavelength /= 1000
     return oftype(wavelength, 1.55749 − 1.57988 * wavelength + 3.99993 * wavelength^2 − 4.68271 * wavelength^3 + 2.09354 * wavelength^4)
 end
+
+
 
 """
 _ice_group_refractive_index(wavelength)
@@ -91,7 +106,8 @@ end
 Calculate the absorption coefficient contribution due to dust
 Taken from "Measurement of South Pole ice transparency with the IceCube LED calibration system", https://doi.org/10.1016/j.nima.2013.01.054
 """
-function _absorption_coeff_dust(wavelength, a_dust_400, kappa_abs_dust)
+function _absorption_coeff_dust(wavelength, a_dust_400, kappa_abs_dust, D, E)
+    a_dust_400 = (D*a_dust_400+E)*400^-kappa_abs_dust
     return oftype(wavelength, a_dust_400 * (wavelength / 400)^(-kappa_abs_dust))
 end
 
@@ -100,15 +116,15 @@ end
 Calculate the absorption coefficient for the SPICE model.
 Taken from "Measurement of South Pole ice transparency with the IceCube LED calibration system", https://doi.org/10.1016/j.nima.2013.01.054
 """
-function _absorption_coeff_spice(wavelength, A_SPICE, B_SPICE, a_dust_400, kappa, dT)
-    adust = _absorption_coeff_dust(wavelength, a_dust_400, kappa)
+function _absorption_coeff_spice(wavelength, A_SPICE, B_SPICE, D_SPICE, E_SPICE, a_dust_400, kappa, dT)
+    adust = _absorption_coeff_dust(wavelength, a_dust_400, kappa, D_SPICE, E_SPICE)
     a_temp = A_SPICE * exp(-B_SPICE/wavelength) * (1 + 0.01 * dT)
     return oftype(wavelength, adust + a_temp)
 end
 
 function absorption_length(wavelength, medium::HomogenousIceProperties)
     abs_coeff = _absorption_coeff_spice(
-        wavelength, A_SPICE(medium), B_SPICE(medium),
+        wavelength, A_SPICE(medium), B_SPICE(medium), D_SPICE(medium), E_SPICE(medium),
         a_dust_400(medium), kappa_abs_dust(medium), deltaTSPICE(medium))
     return oftype(wavelength, 1/abs_coeff)
 end
@@ -127,3 +143,5 @@ function scattering_length(wavelength::Real, medium::HomogenousIceProperties)
     sca_coeff = eff_coeff / ( 1 - mean_scattering_angle(medium))
     return oftype(wavelength, 1/sca_coeff)
 end
+
+scattering_function(medium::HomogenousIceProperties) = mixed_hg_sl_scattering_func(mean_scattering_angle(medium), hg_fraction(medium))

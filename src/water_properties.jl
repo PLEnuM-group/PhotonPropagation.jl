@@ -340,3 +340,5 @@ end
         vol_conc_small_part=vol_conc_small_part(medium),
         vol_conc_large_part=vol_conc_large_part(medium))
 end
+
+scattering_function(medium::WaterProperties) = hg_scattering_func(mean_scattering_angle(medium))

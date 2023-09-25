@@ -63,6 +63,9 @@ function scan_distance(
     stats = []
     all_hits = []
     direction = SVector{3, Float32}(sph_to_cart(dir_theta, dir_phi))
+
+    hbc, hbg = make_hit_buffers()
+
     for distance in distances
 
         r = direction[2] > 0 ? direction[1] / direction[2] : zero(direction[1])
@@ -80,7 +83,7 @@ function scan_distance(
                     println("More than 1E13 photons, skipping")
                     return nothing
                 end
-                photons = propagate_photons(setup)
+                photons = propagate_photons(setup, hbc, hbg)
         
                 if nrow(photons) > 100
                     break
@@ -136,7 +139,9 @@ function prop_single(
     direction = SVector{3, Float32}(sph_to_cart(dir_theta, dir_phi))
     position = SA_F32[pos_x, pos_y, pos_z]
     source = source_f(position, direction)
-        
+    
+    hbc, hbg = make_hit_buffers()
+
     photons = nothing
     for seed in 1:n_samples
 
@@ -148,7 +153,7 @@ function prop_single(
                 println("More than 1E13 photons, skipping")
                 return nothing
             end
-            photons = propagate_photons(setup)
+            photons = propagate_photons(setup, hbc, hbg)
     
             if nrow(photons) > 100
                 break
@@ -190,6 +195,7 @@ function scan_phi(target, medium, spectrum, source_f; n_samples=10, distance=20,
     phis = LinRange(0, 2*π, 20)
     stats = []
     all_hits = []
+    hbc, hbg = make_hit_buffers()
     for phi in phis
         x = cos(phi)*distance
         y = sin(phi)*distance
@@ -199,7 +205,7 @@ function scan_phi(target, medium, spectrum, source_f; n_samples=10, distance=20,
         
         for seed in 1:n_samples
             setup = PhotonPropSetup(source, target, medium, spectrum, seed)
-            photons = propagate_photons(setup)
+            photons = propagate_photons(setup, hbc, hbg)
 
             meta = Dict(:distance => distance, :seed => seed, :dir_phi => phi)
     
@@ -230,24 +236,24 @@ function run_scan(settings_dict)
 
     if settings_dict[:source_type] == "isotropic"
         source_gen = (pos, _) -> PointlikeIsotropicEmitter(pos, 0f0, Int(settings_dict[:n_photons]))
-        spectrum = Monochromatic(Float32(settings_dict[:wavelength]))
+        spectrum = make_monochromatic_spectrum(Float32(settings_dict[:wavelength]))
         
     elseif settings_dict[:source_type] == "cascade"
         wl_range = (300f0, 800f0)
-        spectrum = CherenkovSpectrum(wl_range, medium)    
+        spectrum = make_cherenkov_spectrum(wl_range, medium)    
         source_gen = (pos, dir) -> ExtendedCherenkovEmitter(
             Particle(pos, dir, 0f0, Float32(settings_dict[:energy]), 0f0, PEMinus),
-            medium, wl_range) 
+            medium, spectrum) 
 
     elseif settings_dict[:source_type] == "track"
         wl_range = (300f0, 800f0)
-        spectrum = CherenkovSpectrum(wl_range, medium)    
+        spectrum = make_cherenkov_spectrum(wl_range, medium)    
         
   
         function _gen(pos, dir)
             ppos = pos .- (settings_dict[:length] / 2) .* dir
             particle = Particle(Float32.(ppos), dir, 0f0, Float32(settings_dict[:energy]), Float32(settings_dict[:length]), PMuMinus)
-            return LightsabreMuonEmitter(particle, medium, wl_range)
+            return LightsabreMuonEmitter(particle, medium, spectrum)
         end
 
         source_gen = _gen
@@ -526,9 +532,9 @@ function plot_compare_time_dist_single(hits, models; settings)
 end
 
 
-#=
+
 configs = Dict(
-    "iso_phi" => Dict(
+    #="iso_phi" => Dict(
         :source_type=>"isotropic",
         :scan_type=>"phi",
         :g=>0.95,
@@ -549,6 +555,7 @@ configs = Dict(
         :pos_theta => 0.2,
         :pos_phi => 1.3
     ),
+    =#
     "casc_phi" => Dict(
         :source_type=>"cascade",
         :scan_type=>"phi",
@@ -597,8 +604,6 @@ configs = Dict(
         :pos_z => 10,
         :return_hits => true
     ),
-=#
-configs = Dict(   
     "track_single_timing_uncert" => Dict(
         :source_type=>"track",
         :scan_type=>"single_timeuncert",
@@ -634,30 +639,27 @@ end
 PROJECT_ROOT = pkgdir(PhotonPropagation)
 figure_dir = joinpath(PROJECT_ROOT, "figures")
 
-model_path = joinpath(ENV["WORK"], "time_surrogate")
+model_path = joinpath(ENV["WORK"], "snakemake/time_surrogate")
 models_casc = Dict(
-    "A1S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_1_FNL.bson")),
-    "A2S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_2_FNL.bson"), joinpath(model_path, "extended/time_1_FNL.bson")),
-    "A1S2" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_2_FNL.bson")),
-    "A2S2" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_2_FNL.bson"), joinpath(model_path, "extended/time_2_FNL.bson")),
-    "A3S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_3_FNL.bson"), joinpath(model_path, "extended/time_1_FNL.bson")),
-    "A3S2" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_3_FNL.bson"), joinpath(model_path, "extended/time_2_FNL.bson")),
+    "A1S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
+    "A2S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_2_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
+    "A1S3" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_3_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
 
 )
 
 models_track = Dict(
-    "Model A" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_1_FNL.bson")),
+    "Model A" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_2_FNL.bson")),
     #"A2S1" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_1_FNL.bson")),
     #"A1S2" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_2_FNL.bson")),
-    "Model B" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_2_FNL.bson")),
+    "Model B" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_2_FNL.bson")),
     #"A3S1" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_1_FNL.bson")),
-    "Model C" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_4_FNL.bson")),
+    "Model C" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_3_FNL.bson")),
 )
 
 models_track_15 = Dict(
     "Model A (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
-    "Model B (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_2_FNL.bson")),
-    "Model C (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_4_FNL.bson")),
+    "Model B (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
+    "Model C (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
 )
 
 models_track_25 = Dict(
@@ -666,7 +668,7 @@ models_track_25 = Dict(
     "Model C (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_4_FNL.bson")),
 )
 
-all_models_track = Dict(0 => models_track, 1.5 => models_track_15, 2.5 => models_track_25)
+all_models_track = Dict(0 => models_track, 1.5 => models_track_15) #2.5 => models_track_25)
 
 extension = "svg"
 
@@ -721,8 +723,6 @@ jldopen("validation.jld2", "r") do file
             end
           
         end
-
-
     end
 end
 
