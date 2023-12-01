@@ -2,5 +2,5 @@ using PhotonPropagation
 using Test
 
 @testset "PhotonPropagation.jl" begin
-    # Write your tests here.
+    include("test_calc.jl")
 end

@@ -5,6 +5,10 @@ using CSV
 using DataFrames
 using PhysicsTools
 using Random
+using StatsBase
+using Polynomials
+
+
 
 log_energies = 2:0.1:10
 zs = (0:0.1:20.0)# m
@@ -131,3 +135,89 @@ tlen = cascade_cherenkov_track_length(1E5, PEMinus)
 
 
 em.photons / (frank_tamm_norm((300.0, 800.0), wl ->phase_refractive_index(wl, medium)) * tlen)
+
+
+medium = make_homogenous_clearice_properties()
+tlens = cascade_cherenkov_track_length.((10 .^ log_energies), PEMinus)
+lines(log_energies, tlens,
+    axis=(; yscale=log10, xlabel="Log10(E/GeV)", ylabel="Cherenkov track length"))
+
+total_lys = frank_tamm_norm((200.0, 800.0), wl ->phase_refractive_index(wl, medium)) * tlens
+
+fig, ax, p = lines(log_energies, total_lys,
+    axis=(; yscale=log10, ylabel="Number of photons", xlabel="log10(Energy/GeV)"),
+    label="", dpi=150)
+
+scaling_func(log_e, a, b) = @. (clamp(log_e-a, 0, typemax(Float64)))*b
+
+
+lines!(ax, log_energies, total_lys .* (1 .+scaling_func(log_energies, 5, 0.1)))
+
+
+fig
+
+
+log_energies = 2:0.1:7
+data = []
+for le in log_energies
+
+    sum_hadr_loss = Float64[]
+    sum_loss = Float64[]
+    for _ in 1:100
+        particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 10^le, 1500., PMuMinus)
+        final_state, secondaries = propagate_muon(particle)
+
+        hadronic_losses = [s.energy for s in secondaries if s.type == PHadronShower]
+        all_losses = [s.energy for s in secondaries]
+        #scaled_losses = hadronic_losses .* (1 .+ scaling_func.(log10.(hadronic_losses), 2, 0.3))
+
+        if length(hadronic_losses) > 0
+            push!(sum_hadr_loss, sum(hadronic_losses))
+        else
+            push!(sum_hadr_loss, 0.)
+        end
+        push!(sum_loss, sum(all_losses))
+    end
+    push!(data, (le=le, hadr_loss=mean(sum_hadr_loss), total_loss = mean(sum_loss)))
+end
+
+
+data = DataFrame(data)
+
+data[!, :hadr_frac] .= data[:, :hadr_loss] ./ data[:, :total_loss]
+fig, ax, _ = lines(data[:, :le], (data[:, :hadr_frac]))
+
+p =  Polynomials.fit(data[:, :le], (data[:, :hadr_frac]), 1)
+
+xs = 2:0.1:7
+lines!(ax, xs, p.(xs))
+
+fig
+
+    #scaled_hadr_loss_sum = sum_hadr_loss .* (1 .+ scaling_func.(log10.(sum_hadr_loss), 2, 0.3))
+
+
+
+
+
+em_energy = sum([s.energy for s in secondaries if s.type == PEMinus])
+
+scaled_energy = 
+
+log_energies = 1.:0.5:7
+lys = Float64[]
+tlen = 1000.
+for le in log_energies
+    particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 10^le, tlen, PMuMinus)
+    for i in 1:500
+        p, secondaries = propagate_muon(particle)
+        if length(secondaries) > 0
+            ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+        else
+            ly_secondaries = 0.
+        end
+        push!(lys, ly_secondaries)
+    end
+    ly_secondaries = mean(lys) / tlen
+    push!(data, (log_energy=le, mean_ly=ly_secondaries))
+end

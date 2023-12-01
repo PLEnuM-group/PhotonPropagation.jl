@@ -20,52 +20,163 @@ export shift_to_closest_approach
 export closest_approach_distance, closest_approach_param
 
 
-calc_tgeo(distance, c_n::Number) = distance / c_n
-calc_tgeo(distance, medium::MediumProperties) = calc_tgeo(distance, group_velocity(800.0, medium))
+"""
+    calc_tgeo(distance::Real, c_n::Number)
 
+Calculate the geometric time delay for a photon traveling a given distance in a medium with a given speed of light.
+
+# Arguments
+- `distance`: The distance the photon travels, in meters.
+- `c_n`: The speed of light in the medium, in meters per second.
+
+# Returns
+- The geometric time delay, in seconds.
+"""
+calc_tgeo(distance::Real, c_n::Number) = distance / c_n
+
+"""
+    calc_tgeo(distance::Real, medium::MediumProperties)
+
+Calculate the geometric time delay for a photon traveling a given distance in a medium.
+
+# Arguments
+- `distance`: The distance the photon travels, in meters.
+- `medium`: The properties of the medium, which should be an instance of the `MediumProperties` type.
+
+# Returns
+- The geometric time delay, in seconds.
+"""
+calc_tgeo(distance::Real, medium::MediumProperties) = calc_tgeo(distance, group_velocity(800.0, medium))
+"""
+    calc_tgeo(distance::Real, target::PhotonTarget{<:Spherical}, c_n_or_medium)
+
+Calculate the geometric time delay for a photon traveling a given distance to a spherical target.
+
+# Arguments
+- `distance`: The distance the photon travels.
+- `target`: The target the photon is traveling to. It must be a `PhotonTarget` with a `Spherical` shape.
+- `c_n_or_medium`: The refractive index of the medium or an instance of `MediumProperties`.
+
+# Returns
+- The geometric time delay.
+"""
 function calc_tgeo(distance::Real, target::PhotonTarget{<:Spherical}, c_n_or_medium)
     return  calc_tgeo(distance - target.shape.radius, c_n_or_medium)
 end
 
+"""
+    closest_approach_distance(p0, dir, pos)
 
+Calculate the closest approach distance between a point and a line.
+
+# Arguments
+- `p0`: The origin point of the line.
+- `dir`: The direction of the line.
+- `pos`: The point to calculate the closest approach distance to.
+
+# Returns
+- The closest approach distance.
+"""
 function closest_approach_distance(p0, dir, pos)
     return norm(cross((pos .- p0), dir))
 end
 
 """
-    closest_approach_distance(particle, target)
-Calculate closest approach distance for particle and target.
+    closest_approach_distance(particle::Particle, pos::AbstractArray)
 
-For cascade-like particles, this is the distance between particle position and target position,
-for tracks this is the closest approach distance betwee track and target position
+Calculate the closest approach distance between a particle and a position.
+
+# Arguments
+- `particle`: The particle.
+- `pos`: The position.
+
+# Returns
+- The closest approach distance.
 """
-function closest_approach_distance(particle, target)
+function closest_approach_distance(particle::Particle, pos::AbstractArray)
     if particle_shape(particle) == Track()
-        return closest_approach_distance(particle.position, particle.direction, target.shape.position)
+        return closest_approach_distance(particle.position, particle.direction, pos)
     elseif particle_shape(particle) == Cascade()
-        return norm(particle.position .- target.shape.position)
+        return norm(particle.position .- pos)
     end
 end
 
+"""
+    closest_approach_distance(particle, target::PhotonTarget)
 
+Calculate the closest approach distance between a particle and a target.
+
+# Arguments
+- `particle`: The particle.
+- `target`: The target.
+
+# Returns
+- The closest approach distance.
+"""
+function closest_approach_distance(particle, target::PhotonTarget)
+    return closest_approach_distance(particle, target.shape.position)   
+end
+
+"""
+    calc_tgeo_tracks(p0, dir, pos, n_ph, n_grp)
+
+Calculate the geometric time delay for a track.
+
+# Arguments
+- `p0`: The origin point of the track.
+- `dir`: The direction of the track.
+- `pos`: The position to calculate the time delay at.
+- `n_ph`: The phase refractive index.
+- `n_grp`: The group refractive index.
+
+# Returns
+- The geometric time delay, in nanoseconds.
+"""
 function calc_tgeo_tracks(p0, dir, pos, n_ph, n_grp)
-
     dist = closest_approach_distance(p0, dir, pos)
     dpos = pos .- p0
     t_geo = 1 / c_vac_m_ns * (dot(dir, dpos) + dist * (n_grp * n_ph - 1) / sqrt((n_ph^2 - 1)))
     return t_geo
 end
 
+"""
+    calc_tgeo_tracks(p0, dir, pos, medium::MediumProperties, wavelength=800.)
 
-function calc_tgeo_tracks(p0, dir, pos, medium::MediumProperties)
+Calculate the geometric time delay for a track in a medium.
 
-    wl = 800.0
-    n_ph = phase_refractive_index(wl, medium)
-    n_grp = c_vac_m_ns / group_velocity(wl, medium)
+# Arguments
+- `p0`: The origin point of the track.
+- `dir`: The direction of the track.
+- `pos`: The position to calculate the time delay at.
+- `medium`: The properties of the medium, which should be an instance of the `MediumProperties` type.
+- `wavelength`: The wavelength of the photon, in nanometers. Default is 800 nm.
 
+# Returns
+- The geometric time delay, in nanoseconds.
+
+# Notes
+- The function calculates the phase and group refractive indices based on the provided wavelength and medium properties.
+- It then calls the `calc_tgeo_tracks` function with the calculated refractive indices to compute the geometric time delay.
+"""
+function calc_tgeo_tracks(p0, dir, pos, medium::MediumProperties, wavelength=800.)
+    n_ph = phase_refractive_index(wavelength, medium)
+    n_grp = c_vac_m_ns / group_velocity(wavelength, medium)
     return calc_tgeo_tracks(p0, dir, pos, n_ph, n_grp)
 end
 
+"""
+    calc_tgeo(particle::Particle, target, medium)
+
+Calculate the geometric time delay for a particle in a medium.
+
+# Arguments
+- `particle`: The particle.
+- `target`: The target.
+- `medium`: The medium properties.
+
+# Returns
+- The geometric time delay, in nanoseconds.
+"""
 function calc_tgeo(particle::Particle, target, medium)
     if particle_shape(particle) == Track()
         return calc_tgeo_tracks(particle.position, particle.direction, target.shape.position, medium)
@@ -75,6 +186,20 @@ function calc_tgeo(particle::Particle, target, medium)
 end
 
 
+"""
+    closest_approach_param(p0, dir, pos)
+
+Compute the closest approach parameter between a point `pos` and a line defined by a point `p0` and a direction `dir`.
+
+# Arguments
+- `p0`: The starting point of the line.
+- `dir`: The direction vector of the line.
+- `pos`: The point to compute the closest approach parameter to.
+
+# Returns
+The closest approach parameter `d` between the point `pos` and the line.
+
+"""
 function closest_approach_param(p0, dir, pos)
 
     # Vector from pos to p
@@ -84,19 +209,71 @@ function closest_approach_param(p0, dir, pos)
     return d
 end
 
-function shift_to_closest_approach(particle::Particle, pos::AbstractVector)
-    d = closest_approach_param(particle.position, particle.direction, pos)
+"""
+    closest_approach_param(particle::Particle, pos)
+
+Compute the closest approach parameter between a particle and a position.
+
+If the particle shape is a Track, the closest approach parameter is computed using the particle's position and direction.
+If the particle shape is not a Track, the closest approach parameter is set to 0.
+
+# Arguments
+- `particle::Particle`: The particle object.
+- `pos`: The position to compute the closest approach parameter to.
+
+# Returns
+- The closest approach parameter `d` between the point `pos` and the particle.
+"""
+function closest_approach_param(particle::Particle, pos)
+    if particle_shape(particle) == Track()
+        return closest_approach_param(particle.position, particle.direction, pos)
+    else
+        return 0.
+    end
+end
+
+
+
+"""
+    shift_to_closest_approach(particle::Particle, pos::AbstractVector)
+
+Shifts the particle to its closest approach to a given position.
+
+# Arguments
+- `particle::Particle`: The particle to be shifted.
+- `pos::AbstractVector`: The position to which the particle is shifted.
+
+# Returns
+- `Particle`: The shifted particle.
+
+"""
+function shift_to_closest_approach(particle::Particle{T}, pos::AbstractVector) where {T <: Real}
+    d::T = closest_approach_param(particle.position, particle.direction, pos)
 
     # Projection of a into particle direction
     pos_along = particle.position .+ d .* particle.direction
 
-    t = particle.time .+ d / c_vac_m_ns
+    t::T = particle.time .+ d / c_vac_m_ns
 
     return Particle(pos_along, particle.direction, t, particle.energy, particle.length, particle.type)
 end
     
 
 
+"""
+    calc_time_residual_tracks!(df::AbstractDataFrame, setup::PhotonPropSetup)
+
+Calculate the time residual for each track in the given DataFrame `df` using the provided `setup`.
+
+# Arguments
+- `df::AbstractDataFrame`: The DataFrame containing the tracks.
+- `setup::PhotonPropSetup`: The setup configuration for photon propagation.
+
+# Details
+This function calculates the time residual for each track in the DataFrame `df` by subtracting the geometric time delay from the photon arrival time.
+The calculated time of flight is obtained using the source position, direction, target position, and medium properties from the `setup` configuration.
+
+"""
 function calc_time_residual_tracks!(df::AbstractDataFrame, setup::PhotonPropSetup)
 
     targ_id_map = Dict([target.module_id => target for target in setup.targets])

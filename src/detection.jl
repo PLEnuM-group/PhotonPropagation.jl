@@ -16,6 +16,7 @@ export HomogeneousDetector, RectangularDetector, CircularDetector
 export check_pmt_hit
 export get_pmt_positions
 export apply_wl_acceptance
+export DummyTarget, DummyShape
 
 """
     TargetShape
@@ -28,6 +29,20 @@ surface_area(::TargetShape)
     Return the surface area of the target shape.
 """
 surface_area(::TargetShape) = error("Not implemented")
+
+
+"""
+    DummyShape{T <: Real} <: TargetShape
+
+Dummy target shape, used to define a position.
+
+### Fields
+- `position` - Shape position
+"""
+struct DummyShape{T <: Real} <: TargetShape
+    position::SVector{3, T}
+end
+
 
 """
     Spherical{T <: Real} <: TargetShape
@@ -103,6 +118,15 @@ end
 
 abstract type PhotonTarget{TS<:TargetShape} end
 abstract type PixelatedTarget{TS<:TargetShape} <: PhotonTarget{TS} end
+
+struct DummyTarget{TS<:TargetShape} <: PhotonTarget{TS}
+    shape::TS
+    module_id::UInt16
+end
+
+function DummyTarget(position::SVector{3, T}, module_id::Integer) where {T <: Real}
+    return DummyTarget(DummyShape(position), UInt16(module_id))
+end
 
 geometry_type(::PhotonTarget{TS}) where {TS <:TargetShape} = TS
 
