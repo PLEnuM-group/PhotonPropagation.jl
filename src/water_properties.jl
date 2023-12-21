@@ -46,6 +46,8 @@ Properties for a water-like medium. Use unitful constructor to create a value of
 -radiation_length -- Radiation length (g/cm^2)
 -density -- Density (kg/m^3)
 -mean_scattering_angle -- Cosine of the mean scattering angle
+-abs_scale -- Scaling factor for the absorption length
+-sca_scale -- Scaling factor for the scattering length
 """
 struct WaterProperties{T<:Real} <: MediumProperties{T}
     salinity::T # permille
@@ -57,8 +59,10 @@ struct WaterProperties{T<:Real} <: MediumProperties{T}
     density::T # kg/m^3
     mean_scattering_angle::T
     quan_fry_params::Tuple{T,T,T,T}
+    abs_scale::T
+    sca_scale::T
 
-    WaterProperties(::T, ::T, ::T, ::T, ::T, ::T, ::T, ::T, ::Tuple{T,T,T,T}) where {T} = error("Use unitful constructor")
+    WaterProperties(::T, ::T, ::T, ::T, ::T, ::T, ::T, ::T, ::Tuple{T,T,T,T}, ::T, ::T) where {T} = error("Use unitful constructor")
 
     @doc """
             function WaterProperties(
@@ -82,7 +86,9 @@ struct WaterProperties{T<:Real} <: MediumProperties{T}
         vol_conc_small_part::Unitful.Quantity{T},
         vol_conc_large_part::Unitful.Quantity{T},
         radiation_length::Unitful.Quantity{T},
-        mean_scattering_angle::T
+        mean_scattering_angle::T,
+        abs_scale=1,
+        sca_scale=1
     ) where {T<:Real}
         salinity = ustrip(T, u"permille", salinity)
         temperature = ustrip(T, u"°C", temperature)
@@ -99,7 +105,9 @@ struct WaterProperties{T<:Real} <: MediumProperties{T}
             ustrip(T, u"g/cm^2", radiation_length),
             density,
             mean_scattering_angle,
-            quan_fry_params
+            quan_fry_params,
+            T(abs_scale),
+            T(sca_scale)
         )
     end
 end
@@ -111,14 +119,19 @@ StructTypes.StructType(::Type{<:WaterProperties}) = StructTypes.Struct()
     make_cascadia_medium_properties(::Type{T}) where {T<:Real}
 Construct `WaterProperties` with properties from Cascadia Basin of numerical type `T`.
 """
-make_cascadia_medium_properties(mean_scattering_angle::T) where {T<:Real} = WaterProperties(
+make_cascadia_medium_properties(
+    mean_scattering_angle::T,
+    abs_scale=1,
+    sca_scale=1) where {T<:Real} = WaterProperties(
     T(34.82)u"permille",
     T(269.44088)u"bar",
     T(1.8)u"°C",
     T(0.0075)u"ppm",
     T(0.0075)u"ppm",
     T(36.08)u"g/cm^2",
-    mean_scattering_angle)
+    mean_scattering_angle,
+    abs_scale,
+    sca_scale)
 
 
 """
@@ -330,15 +343,15 @@ dispersion(wavelength::Real, medium::WaterProperties) = dispersion_fry(
     medium.quan_fry_params
 )
 
-function absorption_length(wavelength, ::WaterProperties)
-    return oftype(wavelength, ABSLENGTHSTRAWFIT(wavelength))
+function absorption_length(wavelength, medium::WaterProperties)
+    return oftype(wavelength, ABSLENGTHSTRAWFIT(wavelength) * medium.abs_scale)
 end
 
 @inline function scattering_length(wavelength::Real, medium::WaterProperties)
-    _sca_len_part_conc(
+    return _sca_len_part_conc(
         wavelength;
         vol_conc_small_part=vol_conc_small_part(medium),
-        vol_conc_large_part=vol_conc_large_part(medium))
+        vol_conc_large_part=vol_conc_large_part(medium)) * medium.sca_scale
 end
 
 scattering_function(medium::WaterProperties) = hg_scattering_func(mean_scattering_angle(medium))

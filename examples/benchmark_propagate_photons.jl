@@ -19,7 +19,7 @@ target = HomogeneousDetector(
     Spherical(@SVector[0.0f0, 0f0, distance], target_radius,),
     pmt_area, UInt16(1))
 
-spectrum = CherenkovSpectrum((300.0f0, 800.0f0), medium)
+spectrum = make_cherenkov_spectrum((300.0f0, 800.0f0), medium)
 
 hbc, hbg = make_hit_buffers()
 

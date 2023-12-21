@@ -14,6 +14,8 @@ using Rotations
 using StructArrays
 using PhysicsTools
 
+using LLVM.Interop
+
 export cuda_propagate_photons!, initialize_photon_arrays, process_output
 export cuda_propagate_multi_target!, check_intersection
 export cherenkov_ang_dist, cherenkov_ang_dist_int
@@ -224,6 +226,8 @@ function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVe
         return false, NaN32
     end
 
+    assume(b >= 0)
+
     # Uncommon branch
     # Distance of of the intersection point along the line
     d = -a - sqrt(b)
@@ -243,6 +247,8 @@ function check_intersection(target_shape::Rectangular, pos::SVector{3,T}, dir::S
     if dir_normal == 0
         return false, NaN32
     end
+
+    assume(dir_normal > 0)
 
     d = (target_shape.position[3] - pos[3]) / dir_normal
 
@@ -268,6 +274,8 @@ function check_intersection(target_shape::Circular, pos::SVector{3,T}, dir::SVec
     if dir_normal == 0
         return false, NaN32
     end
+
+    assume(dir_normal > 0)
 
     d = (target_shape.position[3] - pos[3]) / dir_normal
 
@@ -348,10 +356,12 @@ function cuda_propagate_photons!(
         sca_len::T = scattering_length(wavelength, medium)
 
         c_grp::T = group_velocity(wavelength, medium)
+        assume(c_grp > 0)
 
         for nstep in Int32(1):nsteps
 
             eta = rand(T)
+            assume(eta > 0)
             step_size::T = -log(eta) * sca_len
 
             # Check intersection with module
@@ -628,7 +638,7 @@ function run_photon_prop_no_local_cache!(
     targets = CuVector(targets)
 
 
-    kernel = @cuda launch = false cuda_propagate_photons!(
+    kernel = @cuda always_inline=true launch = false cuda_propagate_photons!(
         photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
         sources[1], spectrum, targets, medium, Int32(n_steps))
 

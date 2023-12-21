@@ -148,10 +148,12 @@ StructTypes.StructType(::Type{<:LongitudinalParametersBase}) = StructTypes.Struc
 const LongitudinalParametersEMinus = LongitudinalParametersBase(alpha=2.01849, beta=1.45469, b=0.63207)
 const LongitudinalParametersEPlus = LongitudinalParametersBase(alpha=2.00035, beta=1.45501, b=0.63008)
 const LongitudinalParametersGamma = LongitudinalParametersBase(alpha=2.83923, beta=1.34031, b=0.64526)
+const LongitudinalParametersPiPlus = LongitudinalParametersBase(alpha=1.58357, beta=0.96448, b=0.33833)
 
 get_longitudinal_params(::Type{PEPlus}) = LongitudinalParametersEPlus
 get_longitudinal_params(::Type{PEMinus}) = LongitudinalParametersEMinus
 get_longitudinal_params(::Type{PGamma}) = LongitudinalParametersGamma
+get_longitudinal_params(::Type{PHadronShower}) = LongitudinalParametersPiPlus
 
 """
     get_longitudinal_params(::Type{ptype}, energy)
@@ -226,10 +228,18 @@ const CherenkovTrackLengthParametersGamma = CherenkovTrackLengthParameters(
     beta_dev=5.66586567
 )
 
+const CherenkovTrackLengthParametersPiPlus = CherenkovTrackLengthParameters(
+    alpha=3.3355182722,
+    beta=1.03662217,
+    alpha_dev=1.1920455395,
+    beta_dev=0.80772057
+)
+
+
 get_track_length_params(::Type{PEPlus}) = CherenkovTrackLengthParametersEPlus
 get_track_length_params(::Type{PEMinus}) = CherenkovTrackLengthParametersEMinus
 get_track_length_params(::Type{PGamma}) = CherenkovTrackLengthParametersGamma
-
+get_track_length_params(::Type{PHadronShower}) = CherenkovTrackLengthParametersPiPlus
 """
 Struct for holding both the longitudinal and the track length parametrisation
 """

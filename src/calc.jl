@@ -16,8 +16,9 @@ const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 
 export calc_time_residual!, calc_tgeo
 export calc_time_residual_tracks!, calc_tgeo_tracks
-export shift_to_closest_approach
+export shift_particle, shift_to_closest_approach
 export closest_approach_distance, closest_approach_param
+
 
 
 """
@@ -232,7 +233,17 @@ function closest_approach_param(particle::Particle, pos)
     end
 end
 
+"""
+    shift_particle(particle::Particle{T}, param) where {T <: Real}
 
+Shift particle along its direction by `param` (in units of m)
+"""
+function shift_particle(particle::Particle{T}, param) where {T <: Real}
+    pos_along = particle.position .+ param .* particle.direction
+
+    t::T = particle.time .+ param / c_vac_m_ns
+    return Particle(pos_along, particle.direction, t, particle.energy, particle.length, particle.type)
+end
 
 """
     shift_to_closest_approach(particle::Particle, pos::AbstractVector)
@@ -249,13 +260,7 @@ Shifts the particle to its closest approach to a given position.
 """
 function shift_to_closest_approach(particle::Particle{T}, pos::AbstractVector) where {T <: Real}
     d::T = closest_approach_param(particle.position, particle.direction, pos)
-
-    # Projection of a into particle direction
-    pos_along = particle.position .+ d .* particle.direction
-
-    t::T = particle.time .+ d / c_vac_m_ns
-
-    return Particle(pos_along, particle.direction, t, particle.energy, particle.length, particle.type)
+    return shift_particle(particle, d)
 end
     
 

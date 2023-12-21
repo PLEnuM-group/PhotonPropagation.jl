@@ -59,13 +59,13 @@ end
 
 function make_setup(
     mode, pos, dir, energy, seed;
-    g=0.99f0)
+    g=0.99f0, abs_scale=1f0, sca_scale=1f0)
 
-    medium = make_cascadia_medium_properties(g)
+    medium = make_cascadia_medium_properties(g, abs_scale, sca_scale)
     target = POM(SA_F32[0, 0, 0], UInt16(1))
     wl_range = (300.0f0, 800.0f0)
 
-    spectrum = CherenkovSpectrum(wl_range, medium, 30)
+    spectrum = make_cherenkov_spectrum(wl_range, medium)
 
     if mode == :extended
         particle = Particle(
@@ -76,7 +76,7 @@ function make_setup(
             0.0f0,
             PEMinus
         )
-        source = ExtendedCherenkovEmitter(particle, medium, wl_range)
+        source = ExtendedCherenkovEmitter(particle, medium, spectrum)
     elseif mode == :bare_infinite_track
         length = 400f0
         ppos = pos .- length/2 .* dir
@@ -91,7 +91,7 @@ function make_setup(
             PMuMinus
         )
 
-        source = CherenkovTrackEmitter(particle, medium, wl_range)    
+        source = CherenkovTrackEmitter(particle, medium, spectrum)    
     elseif mode == :lightsabre_muon
         length = 400f0
         ppos = pos .- length/2 .* dir
@@ -105,7 +105,7 @@ function make_setup(
             PMuMinus
         )
 
-        source = LightsabreMuonEmitter(particle, medium, wl_range)
+        source = LightsabreMuonEmitter(particle, medium, spectrum)
 
     elseif mode == :pointlike_cherenkov
         particle = Particle(
@@ -115,7 +115,7 @@ function make_setup(
             Float32(energy),
             0.0f0,
             PEMinus)
-        source = PointlikeChernekovEmitter(particle, medium, wl_range)
+        source = PointlikeChernekovEmitter(particle, medium, spectrum)
     else
         error("unknown mode $mode")
     end

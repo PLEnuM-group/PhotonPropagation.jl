@@ -1,4 +1,5 @@
 export POMAcceptance, POM
+export POMRelativeAcceptance
 export get_pom_pmt_group
 export make_pom_pmt_coordinates
 
@@ -66,7 +67,6 @@ struct POMAcceptance{I} <: PMTAcceptance
 end
 
 function POMAcceptance(pmt_acc_fname::String)
-
     fid = h5open(pmt_acc_fname, "r")
     wls = fid["wavelengths"][:]
     total_acc_1 = linear_interpolation(wls, fid["acc_pmt_grp_1"][:], extrapolation_bc=0.)
@@ -76,48 +76,69 @@ function POMAcceptance(pmt_acc_fname::String)
     sigma_2 = read(fid["sigma_grp_2"])
 
     return POMAcceptance(sigma_1, sigma_2, total_acc_1, total_acc_2)
-
 end
 
 
-struct POM{T} <: PixelatedTarget{Spherical{T}}
+
+"""
+    POMRelativeAcceptance{I} <: PMTAcceptance
+
+This parametrization uses a unit acceptance for PMTs in group 2 and a relative
+acceptance (relative to group 2) for group 1. This is intended to be used when
+the emission spectrum is already biased wrt. to the acceptance
+"""
+struct POMRelativeAcceptance{I} <: PMTAcceptance
+    sigma_1::Float64
+    sigma_2::Float64
+    rel_pos_wl_acc_1::Float64
+    pos_wl_acc_2::I
+end
+
+function POMRelativeAcceptance(pmt_acc_fname::String)
+    fid = h5open(pmt_acc_fname, "r")
+    wls = fid["wavelengths"][:]
+    rel_acc_1 = fid["rel_acc_pmt_grp_1"][]
+    total_acc_2 = linear_interpolation(wls, fid["acc_pmt_grp_2"][:], extrapolation_bc=0.)
+    
+    sigma_1 = read(fid["sigma_grp_1"])
+    sigma_2 = read(fid["sigma_grp_2"])
+    return POMRelativeAcceptance(sigma_1, sigma_2, rel_acc_1, total_acc_2)
+end
+
+
+struct POM{T, A <: PMTAcceptance} <: PixelatedTarget{Spherical{T}}
     shape::Spherical{T}
     pmt_area::Float64
     pmt_coordinates::SMatrix{2,16,Float64}
-    acceptance::POMAcceptance
+    acceptance::A
     module_id::UInt16
+end
 
-    function POM{T}(position::SVector{3, T}, module_id::Integer) where {T <: Real}
-        PROJECT_ROOT = pkgdir(@__MODULE__)
 
-        pmt_area = (75e-3 / 2)^2 * π
-        target_radius = 0.3
+function POM(position::SVector{3, T}, module_id::Integer, acceptance_type::Type{<:PMTAcceptance}=POMAcceptance) where {T <: Real}
+    PROJECT_ROOT = pkgdir(@__MODULE__)
 
-        shape = Spherical(T.(position), T(target_radius))
+    pmt_area = (75e-3 / 2)^2 * π
+    target_radius = 0.3
 
+    shape = Spherical(T.(position), T(target_radius))
+
+    if acceptance_type <: POMRelativeAcceptance
+        acceptance = POMRelativeAcceptance(
+            joinpath(PROJECT_ROOT, "assets/rel_pmt_acc.hd5"),
+        )
+    elseif acceptance_type <: POMAcceptance
         acceptance = POMAcceptance(
             joinpath(PROJECT_ROOT, "assets/pmt_acc.hd5"),
         )
-
-        pom = new{T}(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, UInt16(module_id))
-        return pom
+    else
+        error("Unknown acceptance type: $acceptance_type")
     end
 
-    function POM{T}(
-        shape::Spherical{T},
-        pmt_area::Float64,
-        pmt_coordinates::SMatrix{2,16,Float64},
-        acceptance::POMAcceptance,
-        module_id::UInt16) where {T <: Real}
-        
-        pom = new{T}(shape, pmt_area, pmt_coordinates, acceptance, module_id)
-        return pom
-    end
-
-
+    pom = POM(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, UInt16(module_id))
+    return pom
 end
 
-POM(position::SVector{3, T}, module_id::Integer) where {T} = POM{T}(position, module_id)
 
 function Base.convert(::Type{POM{T}}, x::POM) where {T}
     shape = convert(Spherical{T}, x.shape)
@@ -256,11 +277,83 @@ function apply_wl_acceptance(
     return accepted
 end
 
+"""
+    check_pmt_hit(
+        hit_positions::AbstractVector,
+        hit_directions::AbstractVector,
+        hit_wavelengths::AbstractVector,
+        target::POM{<:Real, POMRelativeAcceptance},
+        orientation::Rotation{3,<:Real})
+
+    Convert photon hits into PMT hits, returning a PMT id for each photon that is detected by a PMT
+    and `0` for photons that did not hit a PMT.
+    
+    Here, we only apply the relative wavelength acceptance of PMT group 1 wrt. group 2.
+    Intended to be used with a biased emission spectrum.
+
+    NOTE: DO NOT USE
+"""
 function check_pmt_hit(
     hit_positions::AbstractVector,
     hit_directions::AbstractVector,
     hit_wavelengths::AbstractVector,
-    target::POM,
+    target::POM{<:Real, <:POMRelativeAcceptance},
+    orientation::Rotation{3,<:Real})
+
+    error("Not Implemented")
+    pmt_positions = get_pmt_positions(target, orientation)
+    n_pmt = get_pmt_count(target)
+
+    rel_total_acc_1 = target.acceptance.rel_pos_wl_acc_1
+
+    prob_vec = zeros(get_pmt_count(target))
+    pmt_hit_ids = zeros(length(hit_positions))
+
+    dists_1 = Rayleigh(target.acceptance.sigma_1)
+    dists_2 = Rayleigh(target.acceptance.sigma_2)
+
+    @inbounds for (hit_id, hit_pos) in enumerate(hit_positions)
+        
+        rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
+
+        # Calc hit fraction per PMT
+        for (pmt_ix, pmt_pos) in enumerate(pmt_positions)
+    
+            pmt_grp = get_pom_pmt_group(pmt_ix)
+            rel_costheta = dot(rel_pos, pmt_pos)
+            pt = acos(clamp(rel_costheta, -1, 1))
+
+            # Reweighting
+            # Base distribution is cospt ~ U[-1, 1] -> acos(cospt) ~ 0.5*sin(pt)
+            pdf_eval = pmt_grp == 1 ? pdf(dists_1, pt) : pdf(dists_2, pt)
+            rel_weight = pdf_eval / (0.5 .* sin(pt))
+
+            hit_a_pmt_prob = pmt_grp == 1 ? rel_total_acc_1/n_pmt : 1/n_pmt
+
+            prob_vec[pmt_ix] = rel_weight * hit_a_pmt_prob
+        end
+
+        no_hit = reduce(*, 1 .- prob_vec)
+        hit_prob = 1 - no_hit
+        @show hit_prob
+
+        if rand() < hit_prob
+            w = ProbabilityWeights(prob_vec)
+            pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
+        end
+    end
+    return pmt_hit_ids
+end
+
+
+
+
+
+function check_pmt_hit(
+    hit_positions::AbstractVector,
+    hit_directions::AbstractVector,
+    hit_wavelengths::AbstractVector,
+    target::POM{<:Real, <:POMAcceptance},
     orientation::Rotation{3,<:Real})
 
     pmt_positions = get_pmt_positions(target, orientation)
