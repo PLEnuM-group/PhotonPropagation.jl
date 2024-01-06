@@ -41,6 +41,8 @@ function run_sim(
     hit_buffer_gpu,
     mode=:extended,
     g=0.95,
+    abs_scale=1.,
+    sca_scale=1.
     )
 
     direction::SVector{3,Float32} = sph_to_cart(acos(dir_costheta), dir_phi)
@@ -62,16 +64,17 @@ function run_sim(
         "seed" => seed,
         "source_pos" => JSON3.write(ppos),
         "g" => g,
+        "abs_scale" => abs_scale,
+        "sca_scale" => sca_scale
     )
 
     base_weight = 1.0
     photons = nothing
 
-    setup = make_setup(mode, ppos, direction, energy, seed, g=g)
+    setup = make_setup(mode, ppos, direction, energy, seed, g=g, abs_scale=Float32(abs_scale), sca_scale=Float32(sca_scale))
 
     if mode == :extended
         exp_ph = expected_det_photons_extended(setup)
-        @show exp_ph
         if exp_ph > 1E5
             factor = 1E5/exp_ph
             setup.sources[1] = rescale_source(setup.sources[1], factor)
@@ -80,26 +83,49 @@ function run_sim(
         end
     end
 
-    while true
+
+    failure_mode = -1
+
+    while failure_mode != 0
         prop_source = setup.sources[1]
         
         if prop_source.photons > 1E13
             println("More than 1E13 photons, skipping")
             return nothing
         end
-        photons = propagate_photons(setup, hit_buffer_cpu, hit_buffer_gpu)
 
-        if nrow(photons) > 100
-            break
+        if failure_mode == 2
+            setup.sources[1] = rescale_source(prop_source, 10)
+            base_weight /= 10.0
+        elseif failure_mode == 1
+            setup.sources[1] = rescale_source(prop_source, 0.1)
+            base_weight *= 10.0
         end
 
-        setup.sources[1] = rescale_source(prop_source, 10)
-        base_weight /= 10.0
-
+        try
+            photons = propagate_photons(setup, hit_buffer_cpu, hit_buffer_gpu)
+        catch e
+            if isa(e, PhotonPropOOMException)
+                println("Photon prop ran out of memory, rescaling.")
+                failure_mode = 1
+                continue
+            else
+                throw(e)
+            end
+        end
+        
+        if nrow(photons) < 100
+            println("Too few photons, rescaling")
+            failure_mode = 2 
+            continue        
+        end  
+        
+        failure_mode = 0
     end
 
     nph_sim = nrow(photons)
 
+    println("Sent: $(setup.sources[1].photons) photons. Received: $(nph_sim)")
     # if more than 1E6 photons make it to the module,
     # take the first 1E6 and scale weights
 
@@ -125,6 +151,12 @@ function run_sim(
 
 end
 
+function get_abs_sca_scale(rng=Random.default_rng())
+    abs_scale = 1 + randn(rng)*0.05
+    sca_scale = 1 + randn(rng)*0.05
+
+    return abs_scale, sca_scale
+end
 function run_sims(parsed_args)
 
     #=
@@ -140,9 +172,13 @@ function run_sims(parsed_args)
     dist_max = parsed_args["dist_max"]
     g = parsed_args["g"]
 
+    perturb_medium = parsed_args["perturb_medium"]
+
+    
     hbc, hbg = make_hit_buffers()
 
-    if mode == :extended || mode == :lightsabre_muon
+    if mode == :extended || mode == :lightsabre
+
         sobol = skip(
             SobolSeq(
                 [log10(e_min), log10(dist_min), -1, 0],
@@ -150,15 +186,14 @@ function run_sims(parsed_args)
             n_sims * n_skip)
 
         for i in 1:n_sims
-            println("Running sims")
-
+            abs_scale, sca_scale = perturb_medium ? get_abs_sca_scale() : (1., 1.)
             pars = next!(sobol)
             energy = 10^pars[1]
             distance = Float32(10^pars[2])
             dir_costheta = pars[3]
             dir_phi = pars[4]
 
-            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, hbc, hbg, mode, g)
+            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, hbc, hbg, mode, g, abs_scale, sca_scale)
             gc()
         end
     elseif mode == :bare_infinite_track
@@ -169,38 +204,42 @@ function run_sims(parsed_args)
             n_sims * n_skip)
 
         for i in 1:n_sims
-
+            abs_scale, sca_scale = perturb_medium ? get_abs_sca_scale() : (1., 1.)
             pars = next!(sobol)
             energy = 1E5
             distance = Float32(10^pars[1])
             dir_costheta = pars[2]
             dir_phi = pars[3]
 
-            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, hbc, hbg, mode, g)
+            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip, hbc, hbg, mode, g, abs_scale, sca_scale)
             gc()
         end
         
-    else
+    elseif mode == :pointlike_cherenkov
         sobol = skip(
             SobolSeq([log10(dist_min), -1], [log10(dist_max), 1]),
             n_sims * n_skip)
 
         for i in 1:n_sims
+            abs_scale, sca_scale = perturb_medium ? get_abs_sca_scale() : (1., 1.)
             pars = next!(sobol)
             energy = 1E5
             distance = Float32(10^pars[1])
             dir_costheta = pars[2]
             dir_phi = 0
 
-            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip,  hbc, hbg, mode, g,)
+            run_sim(energy, distance, dir_costheta, dir_phi, parsed_args["output"], i + n_skip,  hbc, hbg, mode, g, abs_scale, sca_scale)
             gc()
         end
+    else
+        error("Unkown mode: $mode")
     end
+
 end
 
 s = ArgParseSettings()
 
-mode_choices = ["extended", "bare_infinite_track", "pointlike_cherenkov", "lightsabre_muon"]
+mode_choices = ["extended", "bare_infinite_track", "pointlike_cherenkov", "lightsabre"]
 
 @add_arg_table s begin
     "--output"
@@ -245,6 +284,9 @@ mode_choices = ["extended", "bare_infinite_track", "pointlike_cherenkov", "light
     arg_type = Float32
     required = false
     default = 0.95f0
+    "--perturb_medium"
+    help = "Randomly sample abs / sca scales"
+    action = :store_true
 end
 parsed_args = parse_args(ARGS, s)
 
