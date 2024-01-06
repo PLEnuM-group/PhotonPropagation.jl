@@ -177,14 +177,14 @@ function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
     targets = setup.targets
     targ_id_map = Dict([target.module_id => target for target in targets])
 
-    if "pos_x" ∉ names(df)
-        transform!(df, :position => (p -> reduce(hcat, p)') => [:pos_x, :pos_y, :pos_z])
-        transform!(df, :direction => (p -> reduce(hcat, p)') => [:dir_x, :dir_y, :dir_z])
+    if "pos_x" ∉ names(photons)
+        transform!(photons, :position => (p -> reduce(hcat, p)') => [:pos_x, :pos_y, :pos_z])
+        transform!(photons, :direction => (p -> reduce(hcat, p)') => [:dir_x, :dir_y, :dir_z])
     end
 
     photons[!, :qe_weight] .= 0.
 
-    for (key, subdf) in pairs(groupby(df, :module_id))
+    for (key, subdf) in pairs(groupby(photons, :module_id))
         target = targ_id_map[key.module_id]
 
         wl::Vector{Float64} = subdf[:, :wavelength]

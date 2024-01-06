@@ -20,6 +20,7 @@ begin
 	Pkg.Registry.add(Pkg.RegistrySpec(url = "https://github.com/PLEnuM-group/julia-registry.git"))
 	
     Pkg.activate(Base.current_project())
+	#Pkg.activate("1.10")
 
 	Pkg.add([
         Pkg.PackageSpec(name="PhotonPropagation"),
@@ -214,13 +215,8 @@ If we want to convert the photons that have intersected with our detection targe
 # ╔═╡ a1cbdf5b-a0d9-4fc0-b602-b40f76799ae4
 begin
 	hits = make_hits_from_photons(photons, setup)
+	calc_pe_weight!(hits, setup)
 	expected_hits_per_pmt = combine(groupby(hits, :pmt_id), :total_weight => sum => :expected_hits)
-end
-
-# ╔═╡ fe7101aa-a1ae-4459-a9ff-2cc278693bd7
-begin
-	wavelengths = 300:1.:800	
-	lines(wavelengths, target.acceptance.pos_wl_acc_1.(wavelengths))
 end
 
 # ╔═╡ 5e56acfa-a535-45c5-aced-ef8c3946f6ec
@@ -274,7 +270,6 @@ As well as other targets:
 # ╟─0612d2e1-aa19-4222-bede-84d7b7539ef0
 # ╠═fe4af264-831c-4a74-8571-00976a5ad026
 # ╠═a1cbdf5b-a0d9-4fc0-b602-b40f76799ae4
-# ╠═fe7101aa-a1ae-4459-a9ff-2cc278693bd7
 # ╠═5e56acfa-a535-45c5-aced-ef8c3946f6ec
 # ╠═ef63f6d2-6ff5-43d8-890a-7ad88caf20ca
 # ╠═8e767195-bdfd-4465-b1ee-2627e5ede972
