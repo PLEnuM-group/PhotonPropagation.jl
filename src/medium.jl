@@ -15,8 +15,6 @@ export mean_scattering_angle
 export MediumProperties, WaterProperties, HomogenousIceProperties
 export scattering_function
 
-Unitful.register(Medium)
-
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 abstract type MediumProperties{T<:Real} end
 

@@ -1,6 +1,5 @@
 
 # Implementation of WaterProperties
-@unit ppm "ppm" Partspermillion 1 // 1000000 false
 
 """
 DIPPR105Params
