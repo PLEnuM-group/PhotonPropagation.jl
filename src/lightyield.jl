@@ -481,6 +481,19 @@ function rescale_source(em::T, factor::Number) where {T<:PhotonSource}
     end
     return T(args...)
 end
+"""
+    struct AxiconeEmitter{T} <: PhotonSource{T}
+
+A struct representing an axicone emitter.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in 3D space.
+- `direction::SVector{3,T}`: The direction of axis of the axicone.
+- `time::T`: The time at which the photons are emitted.
+- `photons::Int64`: The number of photons to be emitted.
+- `angle::T`: The angle of emission.
+
+"""
 struct AxiconeEmitter{T} <: PhotonSource{T}
     position::SVector{3,T}
     direction::SVector{3,T}
@@ -491,6 +504,19 @@ end
 
 StructTypes.StructType(::Type{<:AxiconeEmitter}) = StructTypes.Struct()
 
+"""
+    struct PencilEmitter{T} <: PhotonSource{T}
+
+A struct representing a pencil beam that emits photons in a specific direction.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in 3D space.
+- `direction::SVector{3,T}`: The direction in which the photons are emitted.
+- `beam_divergence::T`: The divergence angle of the emitted photons.
+- `time::T`: The time at which the photons are emitted.
+- `photons::Int64`: The number of photons to be emitted.
+
+"""
 struct PencilEmitter{T} <: PhotonSource{T}
     position::SVector{3,T}
     direction::SVector{3,T}
@@ -502,6 +528,17 @@ end
 
 StructTypes.StructType(::Type{<:PencilEmitter}) = StructTypes.Struct()
 
+"""
+    struct PointlikeIsotropicEmitter{T} <: PhotonSource{T}
+
+A struct representing a point-like isotropic photon emitter.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in 3D space.
+- `time::T`: The time at which the photons are emitted.
+- `photons::Int64`: The number of photons emitted.
+
+"""
 struct PointlikeIsotropicEmitter{T} <: PhotonSource{T}
     position::SVector{3,T}
     time::T
@@ -511,6 +548,17 @@ end
 StructTypes.StructType(::Type{<:PointlikeIsotropicEmitter}) = StructTypes.Struct()
 
 
+"""
+    struct PointlikeTimeRangeEmitter{T,U} <: PhotonSource{T}
+
+A struct representing a point-like photon emitter with a time range.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in 3D space.
+- `time_range::Tuple{U,U}`: The range of time in which photons are emitted.
+- `photons::Int64`: The number of photons emitted.
+
+"""
 struct PointlikeTimeRangeEmitter{T,U} <: PhotonSource{T}
     position::SVector{3,T}
     time_range::Tuple{U,U}
@@ -522,6 +570,19 @@ StructTypes.StructType(::Type{<:PointlikeTimeRangeEmitter}) = StructTypes.Struct
 
 abstract type CherenkovEmitter{T} <: PhotonSource{T} end
 
+"""
+    struct ExtendedCherenkovEmitter{T} <: CherenkovEmitter{T}
+
+A struct representing an extended cascade emitter.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in three-dimensional space.
+- `direction::SVector{3,T}`: The direction of the cascade axis.
+- `time::T`: The vertex time of the cascades.
+- `photons::Int64`: The number of photons emitted.
+- `long_param::LongitudinalParameterisation{T}`: The longitudinal parameterisation of the emitter.
+
+"""
 struct ExtendedCherenkovEmitter{T} <: CherenkovEmitter{T}
     position::SVector{3,T}
     direction::SVector{3,T}
@@ -533,6 +594,21 @@ end
 StructTypes.StructType(::Type{<:ExtendedCherenkovEmitter}) = StructTypes.Struct()
 
 
+"""
+    ExtendedCherenkovEmitter(particle::Particle, medium::MediumProperties, spectrum::Spectrum; oversample=1.0)
+
+Constructs an ExtendedCherenkovEmitter object that represents the emission of Cherenkov photons by a cascade in a medium.
+
+# Arguments
+- `particle::Particle`: The particle emitting the Cherenkov photons.
+- `medium::MediumProperties`: The properties of the medium.
+- `spectrum::Spectrum`: The spectrum of the emitted photons.
+- `oversample::Float64`: The oversampling factor for the number of emitted photons (default: 1.0).
+
+# Returns
+- An `ExtendedCherenkovEmitter` object representing the emission of Cherenkov photons.
+
+"""
 function ExtendedCherenkovEmitter(
     particle::Particle,
     medium::MediumProperties,
