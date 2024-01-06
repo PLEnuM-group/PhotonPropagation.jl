@@ -322,6 +322,7 @@ apply_wl_acceptance(
     t::PhotonTarget,
     ::Rotation{3,<:Real}) = error("not implemented for type $(typeof(t))")
 
+apply_qe(::AbstractVector, t::PhotonTarget) = error("not implemented for type $(typeof(t))")
     
 abstract type PMTAcceptance end
 

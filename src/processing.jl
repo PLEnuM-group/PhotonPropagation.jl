@@ -17,6 +17,7 @@ export PhotonPropSetup
 export make_hits_from_photons, propagate_photons
 export calc_total_weight!
 export calc_number_of_steps
+export calc_pe_weight!
 
 mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVector{<:PhotonTarget},M<:MediumProperties,C<:SpectralDist}
     sources::SV
@@ -172,6 +173,27 @@ function calc_number_of_steps(sca_len, cutoff_distance, percentile=0.9)
     return n_steps
 end
 
+function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
+    targ_id_map = Dict([target.module_id => target for target in targets])
 
+    if "pos_x" ∉ names(df)
+        transform!(df, :position => (p -> reduce(hcat, p)') => [:pos_x, :pos_y, :pos_z])
+        transform!(df, :direction => (p -> reduce(hcat, p)') => [:dir_x, :dir_y, :dir_z])
+    end
 
+    hits = []
+
+    photons[!, :qe_weight] .= 0.
+
+    for (key, subdf) in pairs(groupby(df, :module_id))
+        target = targ_id_map[key.module_id]
+
+        wl::Vector{Float64} = subdf[:, :wavelength]
+        
+        qe_weights = apply_qe(wl, target)
+        subdf[!, :qe_weight] .= qe_weights
+        subdf[!, :total_weight] .*=qe_weights
+
+    end
+    return photons
 end

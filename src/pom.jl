@@ -2,6 +2,8 @@ export POMAcceptance, POM
 export POMRelativeAcceptance
 export get_pom_pmt_group
 export make_pom_pmt_coordinates
+export POMQuantumEff
+export apply_qe
 
 using HDF5
 using StatsBase
@@ -59,6 +61,22 @@ function POMAcceptance(pmt_acc_fname::String)
 end
 =#
 
+
+
+abstract type QuantumEff end
+ 
+struct POMQuantumEff{I} <: QuantumEff
+    rel_acceptance:I
+end
+
+
+function POMQuantumEff(fname)
+    df = DataFrame(CSV.File(fname))
+    interp = linear_interpolation(df[:, :wavelength], df[:, :rel_acceptance], extrapolation_bc=0.)
+    return POMQuantumEff(interp)
+end
+
+
 struct POMAcceptance{I} <: PMTAcceptance
     sigma_1::Float64
     sigma_2::Float64
@@ -106,11 +124,12 @@ function POMRelativeAcceptance(pmt_acc_fname::String)
 end
 
 
-struct POM{T, A <: PMTAcceptance} <: PixelatedTarget{Spherical{T}}
+struct POM{T, A <: PMTAcceptance, Q<:QuantumEff} <: PixelatedTarget{Spherical{T}}
     shape::Spherical{T}
     pmt_area::Float64
     pmt_coordinates::SMatrix{2,16,Float64}
     acceptance::A
+    quantum_eff::Q
     module_id::UInt16
 end
 
@@ -135,7 +154,9 @@ function POM(position::SVector{3, T}, module_id::Integer, acceptance_type::Type{
         error("Unknown acceptance type: $acceptance_type")
     end
 
-    pom = POM(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, UInt16(module_id))
+    qe = POMQuantumEff(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv"),)
+
+    pom = POM(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, qe, UInt16(module_id))
     return pom
 end
 
@@ -399,4 +420,4 @@ function check_pmt_hit(
     return pmt_hit_ids
 end
         
-        
+apply_qe(wavelength::AbstractVector, t::POM) = t.quantum_eff(wavelength)
