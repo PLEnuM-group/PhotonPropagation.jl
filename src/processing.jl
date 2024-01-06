@@ -132,7 +132,6 @@ function make_hits_from_photons(
     for (key, subdf) in pairs(groupby(df, :module_id))
         target = targ_id_map[key.module_id]
 
-        @show typeof(target)
         positions = vec.(eachrow(Matrix(subdf[:, [:pos_x, :pos_y, :pos_z]])))
         directions = vec.(eachrow(Matrix(subdf[:, [:dir_x, :dir_y, :dir_z]])))
 
