@@ -1,147 +1,8 @@
-### A Pluto.jl notebook ###
-# v0.19.36
-
-using Markdown
-using InteractiveUtils
-
-# ╔═╡ 6d7c401a-ac83-11ee-24f7-3510dd251473
-begin
-    import Pkg
-    # activate the shared project environment
-    Pkg.activate(Base.current_project())
-    # instantiate, i.e. make sure that all packages are downloaded
-    Pkg.instantiate()
-
-    using Plots, PlutoUI, LinearAlgebra
-end
-
-# ╔═╡ 86f89ecd-bbed-4589-991f-c9c04cbdce22
-md"""
-# Photon Propagation Demo
-
-For photon propagation we need a few different ingredients:
-* a photon source
-* a detection target
-* a medium
-
-Let's set up the medium first.
-
-## Medium setup
-
-A medium has to implement various method related to the optical properties, as well as a few other physical properties.
-Convenience constructors for water (with guesstimates of the properties at cascadia basin) as well as ice (deep homogeneous clear ice at Icecube) exist. Here we use the convenience constructor for water.
-"""
-
-# ╔═╡ 40c6cec6-108e-4a62-8001-d654c0b5780d
-# We can configure the mean (cos) scattering angle (used in the Henyey-Greenstein scattering function), as well as absorption and scattering length scaling.
-mean_sca_angle = 0.95f0
-abs_scale = 1f0
-sca_scale = 1f0
-medium = make_cascadia_medium_properties(mean_sca_angle, abs_scale, sca_scale)
-
-# ╔═╡ 022c1191-b77e-42a1-a3eb-c630725880a4
-md"""
-## Light source setup 
-
-Next, we will configure our light source. Various different lightsources are implemented (see `src/lightyield.jl`).
-Let's simulate the light yield of a lightsabre muon (energy losses are averaged over many muon propagations). The `FastLightsabreMuonEmitter` uses an energy dependent
-parametrization of PROPOSAL simulations of muons. We also have to provide a spectrum, for which we can use the convenience function `make_cherenkov_spectrum`.
-"""
-
-# ╔═╡ 504cfcdd-b2f1-49ca-aac4-875dbae0fa29
-# We first define a `particle` and then convert that into a light source
-energy = Float32(1E5)
-direction = SA_F32[0., 1., 0.]
-pos = SA_F32[0, 0, 0]
-len = Float32(1E4)
-t0 = 0f0
-p = Particle(pos, direction, t0, energy, len, PMuPlus)
-
-wl_range = (300f0, 800f0)
-spectrum = make_cherenkov_spectrum(wl_range, medium)
-source = FastLightsabreMuonEmitter(p, medium, spectrum)
-
-
-# ╔═╡ 82e1689d-029f-4fb5-ac49-ff7896a5b985
-md"""
-## Target setup
-
-Finally, we have to provide the target. Here we'll use a P-ONE module.
-"""
-
-# ╔═╡ 50c96a7e-fc4f-421b-a586-2c22af2fe53a
-position = SA_F32[0f0, 30f0, 30f0]
-module_id = 1
-target = POM(position, module_id)
-
-
-# Setup propagation
-seed = 1
-# Allocate buffers where photons will be stored
-buffer_cpu, buffer_gpu = make_hit_buffers()
-
-setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
-
-# Run photon propagation
-photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
-
-# Plot arrival time distribution
-hist(photons[:, :time], weight=photons[:, :total_weight], bins=0:10:500)
-
-# Plot arrival spectrum
-hist(photons[:, :wavelength], weight=photons[:, :total_weight])
-
-# ╔═╡ 0fe88393-a25b-4d6f-921d-df893b20a595
-md"""
-## Multiple Sources
-
-we can also propagate multiple sources at the same time. As an example, we will use PROPOSAl to propagate a muon and use the actual losses instead of the lightsabre
-approximation.
-"""
-
-# ╔═╡ b496274d-6a93-4cc3-a3bb-55ebe47b7148
-prop_p, losses = propagate_muon(p)
-losses_f32 = convert.(Ref(Particle{Float32}), losses)
-
-# Convert losses into emitters
-sources = ExtendedCherenkovEmitter.(losses_f32, Ref(medium), Ref(spectrum))
-
-setup = PhotonPropSetup(sources, [target], medium, spectrum, seed)
-
-# Run photon propagation
-photons_no_approx = propagate_photons(setup, buffer_cpu, buffer_gpu, true)
-
-# Plot arrival time distribution
-bins = 0:10:500
-fig = Figure()
-ax = Axis(fig[1,1])
-hist!(ax, photons[:, :time], weight=photons[:, :total_weight], bins=bins, label="Lightsabre")
-hist!(ax, photons_no_approx[:, :time], weight=photons_no_approx[:, :total_weight], bins=bins, label="Full Losses")
-axislegend()
-fig
-
-# ╔═╡ 00000000-0000-0000-0000-000000000001
-PLUTO_PROJECT_TOML_CONTENTS = """
-[deps]
-CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
-PhotonPropagation = "28d5a9e5-7176-4325-9f36-6543c975d45b"
-PhysicsTools = "aacfb283-0df6-49c4-85a4-270b72c3b0a9"
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-
-[compat]
-CairoMakie = "~0.11.5"
-PhotonPropagation = "~0.4.1"
-PhysicsTools = "~0.5.2"
-StaticArrays = "~1.9.0"
-"""
-
-# ╔═╡ 00000000-0000-0000-0000-000000000002
-PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
 julia_version = "1.10.0"
 manifest_format = "2.0"
-project_hash = "2f9834fda058ff744b528fb59cfcd7069c1b1879"
+project_hash = "f9def50781b985714361aac66c4697d356b1a1d2"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -158,6 +19,12 @@ weakdeps = ["ChainRulesCore", "Test"]
 git-tree-sha1 = "222ee9e50b98f51b5d78feb93dd928880df35f06"
 uuid = "398f06c4-4d28-53ec-89ca-5b2656b7603d"
 version = "0.3.0"
+
+[[deps.AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "c278dfab760520b8bb7e9511b968bf4ba38b7acc"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.2.3"
 
 [[deps.AbstractTrees]]
 git-tree-sha1 = "faa260e4cb5aba097a73fab382dd4b5819d8ec8c"
@@ -838,6 +705,24 @@ git-tree-sha1 = "f218fe3736ddf977e0e772bc9a586b2383da2685"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.3.23"
 
+[[deps.Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[deps.HypertextLiteral]]
+deps = ["Tricks"]
+git-tree-sha1 = "7134810b1afce04bbc1045ca1985fbe81ce17653"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.5"
+
+[[deps.IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "d75853a0bdbfb1ac815478bacd89cd27b550ace6"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.3"
+
 [[deps.ImageAxes]]
 deps = ["AxisArrays", "ImageBase", "ImageCore", "Reexport", "SimpleTraits"]
 git-tree-sha1 = "2e4520d67b0cef90865b3ef727594d2a58e0e1f8"
@@ -1198,6 +1083,11 @@ git-tree-sha1 = "38756922d32476c8f41f73560b910fc805a5a103"
 uuid = "6f1432cf-f94c-5a45-995e-cdbf5db27b0b"
 version = "2.4.3"
 
+[[deps.MIMEs]]
+git-tree-sha1 = "65f28ad4b594aebe22157d6fac869786a255b7eb"
+uuid = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
+version = "0.1.4"
+
 [[deps.MKL_jll]]
 deps = ["Artifacts", "IntelOpenMP_jll", "JLLWrappers", "LazyArtifacts", "Libdl"]
 git-tree-sha1 = "72dc3cf284559eb8f53aa593fe62cb33f83ed0c0"
@@ -1499,9 +1389,9 @@ version = "0.4.19"
 
 [[deps.PhotonPropagation]]
 deps = ["Adapt", "ArgParse", "CSV", "CUDA", "DataFrames", "Distributions", "HDF5", "Interpolations", "JSON", "JSON3", "LLVM", "LinearAlgebra", "Logging", "MultivariateStats", "Parquet", "PhysicalConstants", "PhysicsTools", "PoissonRandom", "Polynomials", "PrecompileTools", "ProgressLogging", "Random", "Reexport", "Revise", "Rotations", "SpecialFunctions", "StaticArrays", "StatsBase", "StructArrays", "StructTypes", "TerminalLoggers", "Unitful"]
-git-tree-sha1 = "972c824065b2da0a32a500b2c72da7a08cb35814"
+git-tree-sha1 = "82401745b096969ec2c6a35ad91687c3d052fcbb"
 uuid = "28d5a9e5-7176-4325-9f36-6543c975d45b"
-version = "0.4.1"
+version = "0.4.4"
 
 [[deps.PhysicalConstants]]
 deps = ["Measurements", "Roots", "Unitful"]
@@ -1537,6 +1427,12 @@ deps = ["ColorSchemes", "Colors", "Dates", "PrecompileTools", "Printf", "Random"
 git-tree-sha1 = "862942baf5663da528f66d24996eb6da85218e76"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.0"
+
+[[deps.PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "FixedPointNumbers", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "MIMEs", "Markdown", "Random", "Reexport", "URIs", "UUIDs"]
+git-tree-sha1 = "bd7c69c7f7173097e7b5e1be07cee2b8b7447f51"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.54"
 
 [[deps.PoissonRandom]]
 deps = ["Random"]
@@ -2037,6 +1933,11 @@ git-tree-sha1 = "9a6ae7ed916312b41236fcef7e0af564ef934769"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 version = "0.9.13"
 
+[[deps.Tricks]]
+git-tree-sha1 = "eae1bb484cd63b36999ee58be2de6c178105112f"
+uuid = "410a4b4d-49e4-4fbc-ab6d-cb71b17b3775"
+version = "0.1.8"
+
 [[deps.TriplotBase]]
 git-tree-sha1 = "4d4ed7f294cda19382ff7de4c137d24d16adc89b"
 uuid = "981d1d27-644d-49a2-9326-4793e63143c3"
@@ -2046,6 +1947,11 @@ version = "0.1.0"
 git-tree-sha1 = "155515ed4c4236db30049ac1495e2969cc06be9d"
 uuid = "9d95972d-f1c8-5527-a6e0-b4b365fa01f6"
 version = "1.4.3"
+
+[[deps.URIs]]
+git-tree-sha1 = "67db6cc7b3821e19ebe75791a9dd19c9b1188f2b"
+uuid = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
+version = "1.5.1"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
@@ -2275,17 +2181,3 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "ee567a171cce03570d77ad3a43e90218e38937a9"
 uuid = "dfaa095f-4041-5dcd-9319-2fabd8486b76"
 version = "3.5.0+0"
-"""
-
-# ╔═╡ Cell order:
-# ╠═6d7c401a-ac83-11ee-24f7-3510dd251473
-# ╠═86f89ecd-bbed-4589-991f-c9c04cbdce22
-# ╠═40c6cec6-108e-4a62-8001-d654c0b5780d
-# ╠═022c1191-b77e-42a1-a3eb-c630725880a4
-# ╠═504cfcdd-b2f1-49ca-aac4-875dbae0fa29
-# ╠═82e1689d-029f-4fb5-ac49-ff7896a5b985
-# ╠═50c96a7e-fc4f-421b-a586-2c22af2fe53a
-# ╠═0fe88393-a25b-4d6f-921d-df893b20a595
-# ╠═b496274d-6a93-4cc3-a3bb-55ebe47b7148
-# ╟─00000000-0000-0000-0000-000000000001
-# ╟─00000000-0000-0000-0000-000000000002
