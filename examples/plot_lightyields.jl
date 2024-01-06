@@ -84,7 +84,7 @@ lines(group_velocity.(lambdas, Ref(medium)))
 
 medium = make_cascadia_medium_properties(0.95)
 wl_range = (300., 800.)
-
+spectrum = make_cherenkov_spectrum(wl_range, medium)
 
 using StatsBase
 using CurveFit
@@ -97,7 +97,7 @@ for le in log_energies
     for i in 1:500
         p, secondaries = propagate_muon(particle)
         if length(secondaries) > 0
-            ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(wl_range)))
+            ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(spectrum)))
         else
             ly_secondaries = 0.
         end
@@ -109,13 +109,15 @@ end
 
 data = DataFrame(data)
 fig, ax, lin = lines(data[:, :log_energy], log10.(data[:, :mean_ly]))
-coeffs = poly_fit(data[:, :log_energy], log10.(data[:, :mean_ly]), 4)
+coeffs = poly_fit(data[:, :log_energy], log10.(data[:, :mean_ly]), 5)
 lines!(ax, log_energies, Polynomial(coeffs).(log_energies))
 fig
 fig, ax, lin = lines(data[:, :log_energy], (data[:, :mean_ly]))
 lines!(ax, log_energies, 10 .^Polynomial(coeffs).(log_energies))
 fig
 
+
+coeffs
 
 dom = DOM(SA[0., 0., 0.], 1)
 
