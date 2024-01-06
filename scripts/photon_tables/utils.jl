@@ -92,7 +92,7 @@ function make_setup(
         )
 
         source = CherenkovTrackEmitter(particle, medium, spectrum)    
-    elseif mode == :lightsabre_muon
+    elseif mode == :lightsabre
         length = 400f0
         ppos = pos .- length/2 .* dir
         
@@ -105,7 +105,7 @@ function make_setup(
             PMuMinus
         )
 
-        source = LightsabreMuonEmitter(particle, medium, spectrum)
+        source = FastLightsabreMuonEmitter(particle, medium, spectrum)
 
     elseif mode == :pointlike_cherenkov
         particle = Particle(
