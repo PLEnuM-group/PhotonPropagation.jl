@@ -174,6 +174,7 @@ function calc_number_of_steps(sca_len, cutoff_distance, percentile=0.9)
 end
 
 function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
+    targets = setup.targets
     targ_id_map = Dict([target.module_id => target for target in targets])
 
     if "pos_x" ∉ names(df)
@@ -190,8 +191,9 @@ function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
         
         qe_weights = apply_qe(wl, target)
         subdf[!, :qe_weight] .= qe_weights
-        subdf[!, :total_weight] .*=qe_weights
+        subdf[!, :total_weight] .*= qe_weights
 
     end
     return photons
+end
 end

@@ -66,11 +66,11 @@ end
 abstract type QuantumEff end
  
 struct POMQuantumEff{I} <: QuantumEff
-    rel_acceptance:I
+    rel_acceptance::I
 end
 
 
-function POMQuantumEff(fname)
+function POMQuantumEff(fname::String)
     df = DataFrame(CSV.File(fname))
     interp = linear_interpolation(df[:, :wavelength], df[:, :rel_acceptance], extrapolation_bc=0.)
     return POMQuantumEff(interp)
@@ -389,7 +389,15 @@ function check_pmt_hit(
     dists_2 = Rayleigh(target.acceptance.sigma_2)
 
     @inbounds for (hit_id, hit_pos) in enumerate(hit_positions)
-        
+
+        # Did we hit any pmt
+        if rand() >= (total_acc_1[hit_id] + total_acc_2[hit_id])
+            # no hit
+            continue
+        end
+
+        #Choose which pmt we've hit
+
         rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
 
         # Calc hit fraction per PMT
@@ -408,14 +416,8 @@ function check_pmt_hit(
 
             prob_vec[pmt_ix] = rel_weight * hit_a_pmt_prob
         end
-
-        no_hit = reduce(*, 1 .- prob_vec)
-        hit_prob = 1 - no_hit
-
-        if rand() < hit_prob
-            w = ProbabilityWeights(prob_vec)
-            pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
-        end
+        w = ProbabilityWeights(prob_vec)
+        pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
     end
     return pmt_hit_ids
 end
