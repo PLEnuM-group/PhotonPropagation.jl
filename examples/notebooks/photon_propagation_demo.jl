@@ -19,8 +19,8 @@ begin
     import Pkg
 	Pkg.Registry.add(Pkg.RegistrySpec(url = "https://github.com/PLEnuM-group/julia-registry.git"))
 	
-    Pkg.activate(Base.current_project())
-	#Pkg.activate("1.10")
+    #Pkg.activate(Base.current_project())
+	Pkg.activate()
 
 	Pkg.add([
         Pkg.PackageSpec(name="PhotonPropagation"),
@@ -123,7 +123,7 @@ begin
 	wl_range = (300f0, 800f0)
 	spectrum = make_cherenkov_spectrum(wl_range, medium)
 	source = FastLightsabreMuonEmitter(p, medium, spectrum)
-	end
+end
 
 # ╔═╡ 82e1689d-029f-4fb5-ac49-ff7896a5b985
 md"""

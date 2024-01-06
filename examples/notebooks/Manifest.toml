@@ -1389,9 +1389,9 @@ version = "0.4.19"
 
 [[deps.PhotonPropagation]]
 deps = ["Adapt", "ArgParse", "CSV", "CUDA", "DataFrames", "Distributions", "HDF5", "Interpolations", "JSON", "JSON3", "LLVM", "LinearAlgebra", "Logging", "MultivariateStats", "Parquet", "PhysicalConstants", "PhysicsTools", "PoissonRandom", "Polynomials", "PrecompileTools", "ProgressLogging", "Random", "Reexport", "Revise", "Rotations", "SpecialFunctions", "StaticArrays", "StatsBase", "StructArrays", "StructTypes", "TerminalLoggers", "Unitful"]
-git-tree-sha1 = "8b9cde9570cca69599f4e5052af632af14e102c1"
+git-tree-sha1 = "444767db383dca7cf010a2ad811a0c1a821da08e"
 uuid = "28d5a9e5-7176-4325-9f36-6543c975d45b"
-version = "0.4.7"
+version = "0.4.8"
 
 [[deps.PhysicalConstants]]
 deps = ["Measurements", "Roots", "Unitful"]

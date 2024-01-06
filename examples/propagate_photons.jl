@@ -4,6 +4,41 @@ using PhysicsTools
 using CairoMakie
 
 
+begin
+	mean_sca_angle = 0.95f0
+    medium = make_cascadia_medium_properties(mean_sca_angle)
+    # We first define a `particle` and then convert into a light source
+	energy = Float32(1E5)
+	direction = SA_F32[0., 1., 0.]
+	pos = SA_F32[0, 0, 0]
+	len = Float32(1E4)
+	t0 = 0f0
+	p = Particle(pos, direction, t0, energy, len, PMuPlus)
+	
+	wl_range = (300f0, 800f0)
+	spectrum = make_cherenkov_spectrum(wl_range, medium)
+	source = FastLightsabreMuonEmitter(p, medium, spectrum)
+
+    tpos = SA_F32[0f0, 30f0, 5f0]
+    module_id = 1
+    target = POM(tpos, module_id)
+    
+    # Setup propagation
+    seed = 1
+        
+    setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
+    buffer_cpu, buffer_gpu = make_hit_buffers();
+    # Run photon propagation
+    @time photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
+
+end;
+    
+hits = make_hits_from_photons(photons, setup)
+sum(calc_pe_weight!(hits, setup)[:, :total_weight])
+
+
+
+
 # Target Shape
 module_position = SA[0., 0., 10.]
 module_radius = 0.3
@@ -57,7 +92,7 @@ photons = propagate_photons(setup, hbc, hbg)
 
 p = Particle(pos, direction, 0f0, energy, 400f0, PMuPlus)
 wl_range = (300f0, 800f0)
-source_muon = LightsabreMuonEmitter(p, medium, spectrum)
+source_muon = FastLightsabreMuonEmitter(p, medium, spectrum)
 
 setup = PhotonPropSetup([source_muon], [target], medium, spectrum, seed)
 photons = propagate_photons(setup, hbc, hbg)
