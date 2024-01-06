@@ -181,8 +181,6 @@ function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
         transform!(df, :direction => (p -> reduce(hcat, p)') => [:dir_x, :dir_y, :dir_z])
     end
 
-    hits = []
-
     photons[!, :qe_weight] .= 0.
 
     for (key, subdf) in pairs(groupby(df, :module_id))
