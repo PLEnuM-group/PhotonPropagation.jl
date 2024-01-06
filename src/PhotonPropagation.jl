@@ -13,7 +13,6 @@ include("processing.jl")
 include("output.jl")
 include("calc.jl")
 
-
 @reexport using .Medium
 @reexport using .Spectral
 @reexport using .LightYield

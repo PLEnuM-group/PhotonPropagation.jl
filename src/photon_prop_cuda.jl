@@ -22,6 +22,7 @@ export cherenkov_ang_dist, cherenkov_ang_dist_int
 export run_photon_prop_no_local_cache!
 export make_hit_buffers
 export PhotonHit
+export PhotonPropOOMException
 
 
 using ..Medium
@@ -31,6 +32,9 @@ using ..LightYield
 
 
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
+
+
+struct PhotonPropOOMException <: Exception end
 
 
 """
@@ -203,6 +207,7 @@ function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVe
     target_rsq = target_shape.radius^2
 
     dpos = pos .- target_pos
+
 
     #=
     # Check if intersection is even possible
@@ -392,15 +397,14 @@ function cuda_propagate_photons!(
             dist_travelled += dist_to_target
             time += dist_to_target / c_grp
 
+            # Check if there's enough space in the output vector
             if out_stack_pointer[1] >= length(out_hits)
                 err_code = 1
                 break
             end
 
             stack_idx::Int64 = CUDA.atomic_add!(pointer(out_stack_pointer, 1), Int64(1))
-            # Check if there's enough space in the output vector
             
-
             out_hits.position[stack_idx] = pos
             out_hits.direction[stack_idx] = dir
             out_hits.initial_direction[stack_idx] = initial_dir
@@ -646,15 +650,13 @@ function run_photon_prop_no_local_cache!(
 
     # Can assign photons to sources by keeping track of stack_idx for each source
     for source in sources
-        CUDA.@sync begin
-            kernel(
+        
+        CUDA.@sync @cuda always_inline=true threads=threads blocks=blocks cuda_propagate_photons!(
                 photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
-                source, spectrum, targets, medium, Int32(n_steps); threads=threads, blocks=blocks)
-        end
-        err_code = Vector(err_code)[1]
+                source, spectrum, targets, medium, Int32(n_steps))
         # We ran out of memory
-        if err_code == 1
-            @error "Photon prop ran out of memory. Photon stats may be reduced"
+        if Vector(err_code)[1] == 1
+            throw(PhotonPropOOMException())
         end
 
     end

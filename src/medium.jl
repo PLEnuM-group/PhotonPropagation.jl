@@ -119,6 +119,16 @@ Return the dispersion at `wavelength`.
 """
 dispersion(wavelength, medium::MediumProperties) = error("Not implemented for $(typeof(medium))")
 
+"""
+    absorption_length(wavelength, medium::MediumProperties)
+Return absorption length (in m) at `wavelength`.
+
+`wavelength` is expected to be in units nm.
+"""
+absorption_length(wavelength, medium::MediumProperties) = error("Not implemented for $(typeof(medium))")
+
+
+# End Interface
 
 """
     cherenkov_angle(wavelength, medium::MediumProperties)
@@ -143,13 +153,7 @@ function group_velocity(wavelength::T, medium::MediumProperties) where {T<:Real}
     T(c_vac_m_ns) / (ref_ix - λ_0 * dispersion(wavelength, medium))
 end
 
-"""
-    absorption_length(wavelength, medium::MediumProperties)
-Return absorption length (in m) at `wavelength`.
 
-`wavelength` is expected to be in units nm.
-"""
-absorption_length(wavelength, medium::MediumProperties) = error("Not implemented for $(typeof(medium))")
 
 
 include("water_properties.jl")

@@ -131,6 +131,17 @@ end
 geometry_type(::PhotonTarget{TS}) where {TS <:TargetShape} = TS
 
 
+"""
+    struct HomogeneousDetector{TS <: TargetShape} <: PhotonTarget{TS}
+
+A struct representing a homogeneous detector.
+
+# Fields
+- `shape::TS`: The shape of the detector.
+- `active_area::Float64`: The active area of the detector.
+- `module_id::UInt16`: The module ID of the detector.
+
+"""
 struct HomogeneousDetector{TS <: TargetShape} <: PhotonTarget{TS}
     shape::TS
     active_area::Float64
@@ -140,6 +151,17 @@ end
 StructTypes.StructType(::Type{<:HomogeneousDetector}) = StructTypes.Struct()
 
 
+"""
+    struct SphericalHomogeneousDetector{T} <: PhotonTarget{Spherical{T}}
+
+A struct representing a spherical homogeneous detector.
+
+# Fields
+- `shape::Spherical{T}`: The shape of the detector.
+- `active_area::Float64`: The active area of the detector.
+- `module_id::UInt16`: The module ID of the detector.
+
+"""
 struct SphericalHomogeneousDetector{T} <: PhotonTarget{Spherical{T}}
     shape::Spherical{T}
     active_area::Float64
@@ -148,13 +170,25 @@ end
 
 StructTypes.StructType(::Type{<:SphericalHomogeneousDetector}) = StructTypes.Struct()
 
-struct SphericalMultiPMTDetector{N,L,T,  I} <: PixelatedTarget{Spherical{T}}
+"""
+    struct SphericalMultiPMTDetector{N,L,T,I} <: PixelatedTarget{Spherical{T}}
+
+A struct representing a spherical multi-PMT detector.
+
+# Fields
+- `shape::Spherical{T}`: The shape of the detector.
+- `pmt_area::Float64`: The area of each PMT.
+- `pmt_coordinates::SMatrix{2,N,Float64,L}`: The coordinates of the PMTs.
+- `wl_acceptance::I`: The wavelength acceptance of the detector.
+- `module_id::UInt16`: The ID of the module.
+
+"""
+struct SphericalMultiPMTDetector{N,L,T,I} <: PixelatedTarget{Spherical{T}}
     shape::Spherical{T}
     pmt_area::Float64
     pmt_coordinates::SMatrix{2,N,Float64,L}
     wl_acceptance::I
     module_id::UInt16
-    
 end
 
 StructTypes.StructType(::Type{<:SphericalMultiPMTDetector}) = StructTypes.Struct()
@@ -163,6 +197,19 @@ get_pmt_count(::HomogeneousDetector) = 1
 get_pmt_count(::SphericalMultiPMTDetector{N,L}) where {N,L} = N
 get_pmt_count(::Type{SphericalMultiPMTDetector{N,L}}) where {N,L} = N
 
+"""
+    get_pmt_positions(target, orientation)
+
+Compute the positions of the photomultiplier tubes (PMTs) in a pixelated target.
+
+# Arguments
+- `target`: A `PixelatedTarget` object representing the pixelated target.
+- `orientation`: A `Rotation{3,<:Real}` object representing the orientation of the target.
+
+# Returns
+An array of `SVector{3, eltype(target.pmt_coordinates)}` representing the positions of the PMTs.
+
+"""
 function get_pmt_positions(
     target::PixelatedTarget,
     orientation::Rotation{3,<:Real})
@@ -175,6 +222,20 @@ function get_pmt_positions(
     return pmt_positions
 end
 
+"""
+    check_pmt_hit_opening_angle(rel_hit_position, pmt_positions, opening_angle)
+
+Check if the relative hit position is within the opening angle of any PMT.
+
+# Arguments
+- `rel_hit_position::SVector{3,<:Real}`: The relative hit position.
+- `pmt_positions::AbstractVector{T}`: The positions of the PMTs.
+- `opening_angle::Real`: The opening angle threshold.
+
+# Returns
+- `j::Int`: The index of the first PMT within the opening angle, or 0 if none.
+
+"""
 function check_pmt_hit_opening_angle(
     rel_hit_position::SVector{3,<:Real},
     pmt_positions::AbstractVector{T},
@@ -244,7 +305,6 @@ function check_pmt_hit(
 
 
     pmt_hit_ids = zeros(length(hit_positions))
-
 
     tpos = convert(SVector{3,Float64}, target.shape.position)
     rel_pos = hit_positions[hits] .- Ref(tpos)

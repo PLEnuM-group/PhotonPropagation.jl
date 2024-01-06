@@ -12,6 +12,7 @@ export rel_additional_track_length
 export AngularEmissionProfile
 export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, CherenkovEmitter, PointlikeCherenkovEmitter
 export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, LightsabreMuonEmitter
+export FastLightsabreMuonEmitter
 export cherenkov_ang_dist, cherenkov_ang_dist_int
 export split_source, rescale_source
 
@@ -26,6 +27,7 @@ using PoissonRandom
 using PhysicsTools
 using StructTypes
 using StatsBase
+using Polynomials
 
 using ..Spectral
 using ..Medium
@@ -581,6 +583,22 @@ function CherenkovTrackEmitter(particle::Particle{T}, medium::MediumProperties, 
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
 end
 
+function Base.show(io::IO, source::CherenkovTrackEmitter)
+    print(io, "CherenkovTrackEmitter (", "Pos:", source.position, ", Dir:", source.direction, ", T:", source.time, " ns, L:", source.length, " m, Photons:", source.photons,")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", source::CherenkovTrackEmitter)
+
+    print(io, "CherenkovTrackEmitter with:")
+    print(io, "    Position: ", source.position, "\n")
+    print(io, "    Direction: ", source.direction, "\n")
+    print(io, "    Time: ", source.time, " ns\n")
+    print(io, "    Length: ", source.length, " m\n")
+    print(io, "    Photons: ", source.photons, "\n")
+end
+
+
+
 function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, spectrum::Spectrum) where {T<:Real}
 
     lys = Float64[]
@@ -600,6 +618,30 @@ function LightsabreMuonEmitter(particle::Particle{T}, medium::MediumProperties, 
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
 end
 
+
+function FastLightsabreMuonEmitter(particle::Particle, medium::MediumProperties, spectrum::Spectrum) 
+
+    # TODO: Check that medium and spectrum actually match the polynomial it was generated for.
+    coeffs = [0.08579130312815847
+            1.584750063826708
+            0.07339608562414644
+            -0.0887212430029659
+            0.016106184682215623
+            -0.0008970618164771176]
+    max_energy = 1E7
+    min_energy = 1E1
+
+    if particle.energy > max_energy || particle.energy < min_energy
+        error("particle energy outside parametrization range")
+    end
+
+    log_energy = log10(particle.energy)
+    lightyield = 10^Polynomial(coeffs)(log_energy) * particle.length
+    
+    n_photons = pois_rand(lightyield)
+
+    return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)
+end
 
 
 

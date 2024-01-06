@@ -67,14 +67,15 @@ function propagate_photons(setup::PhotonPropSetup, steps=15; reserved_memory_fra
     return propagate_photons(setup, hit_buffer_cpu, hit_buffer_gpu, steps)
 end
 
-function propagate_photons(setup::PhotonPropSetup, hit_buffer_cpu, hit_buffer_gpu, steps=15)   
+function propagate_photons(setup::PhotonPropSetup, hit_buffer_cpu, hit_buffer_gpu, steps=15; copy_output=false)   
 
     hits, n_ph_sim = run_photon_prop_no_local_cache!(
         setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spec_dist, setup.seed,
         hit_buffer_cpu, hit_buffer_gpu, n_steps=steps,
         )
 
-    df = DataFrame(hits, copycols=false)
+
+    df = DataFrame(hits, copycols=copy_output)
 
     mod_ids = [targ.module_id for targ in setup.targets]
     df[!, :module_id] .= mod_ids[df[:, :module_id]]
