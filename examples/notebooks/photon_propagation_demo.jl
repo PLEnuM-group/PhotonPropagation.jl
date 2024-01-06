@@ -46,11 +46,7 @@ begin
 	using HypertextLiteral
 	using Rotations
 	using LinearAlgebra
-	
-end
 
-# ╔═╡ fa3f6880-d605-413d-aa87-412f3bdcdd70
-begin
 	# Allocate buffers where photons will be stored, will need this later.
 	buffer_cpu, buffer_gpu = make_hit_buffers();
 	
@@ -78,6 +74,7 @@ begin
 	function plot_photon_distributions(photons::AbstractDataFrame)
 		return plot_photon_distributions([photons], ["Photons"])
 	end
+	
 end
 
 # ╔═╡ 86f89ecd-bbed-4589-991f-c9c04cbdce22
@@ -255,7 +252,6 @@ As well as other targets:
 
 # ╔═╡ Cell order:
 # ╠═6d7c401a-ac83-11ee-24f7-3510dd251473
-# ╠═fa3f6880-d605-413d-aa87-412f3bdcdd70
 # ╠═86f89ecd-bbed-4589-991f-c9c04cbdce22
 # ╠═40c6cec6-108e-4a62-8001-d654c0b5780d
 # ╟─022c1191-b77e-42a1-a3eb-c630725880a4

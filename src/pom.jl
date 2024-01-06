@@ -422,4 +422,4 @@ function check_pmt_hit(
     return pmt_hit_ids
 end
         
-apply_qe(wavelength::AbstractVector, t::POM) = t.quantum_eff(wavelength)
+apply_qe(wavelength::AbstractVector, t::POM) = t.quantum_eff.rel_acceptance(wavelength)
