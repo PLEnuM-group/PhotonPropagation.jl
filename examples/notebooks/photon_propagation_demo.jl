@@ -47,11 +47,14 @@ begin
 	using Rotations
 	using LinearAlgebra
 
+end
+
+# ╔═╡ b4470b38-465c-494c-b363-4ad26118141f
+begin
 	# Allocate buffers where photons will be stored, will need this later.
 	buffer_cpu, buffer_gpu = make_hit_buffers();
 	
-	# Define plotting functions
-	
+	# Define plotting functions	
 	function plot_photon_distributions(photons::AbstractVector, labels)
 		
 			fig = Figure()
@@ -64,7 +67,7 @@ begin
 				hist!(ax_r, ph[:, :wavelength], weights=ph[:, :total_weight], label=lb, )
 			end
 	
-			ylims!(ax_l, 1E-1, 1E2)
+			ylims!(ax_l, 1E-1, 1E3)
 			
 			# Plot arrival spectrum
 			axislegend()
@@ -74,7 +77,6 @@ begin
 	function plot_photon_distributions(photons::AbstractDataFrame)
 		return plot_photon_distributions([photons], ["Photons"])
 	end
-	
 end
 
 # ╔═╡ 86f89ecd-bbed-4589-991f-c9c04cbdce22
@@ -110,7 +112,7 @@ parametrization of PROPOSAL simulations of muons. We also have to provide a spec
 
 # ╔═╡ 504cfcdd-b2f1-49ca-aac4-875dbae0fa29
 begin
-	# We first define a `particle` and then convert that into a light source
+	# We first define a `particle` and then convert into a light source
 	energy = Float32(1E5)
 	direction = SA_F32[0., 1., 0.]
 	pos = SA_F32[0, 0, 0]
@@ -132,7 +134,7 @@ Finally, we have to provide the target. Here we'll use a P-ONE module.
 
 # ╔═╡ 50c96a7e-fc4f-421b-a586-2c22af2fe53a
 begin
-	tpos = SA_F32[0f0, 30f0, 30f0]
+	tpos = SA_F32[0f0, 30f0, 5f0]
 	module_id = 1
 	target = POM(tpos, module_id)
 	
@@ -216,19 +218,18 @@ begin
 	expected_hits_per_pmt = combine(groupby(hits, :pmt_id), :total_weight => sum => :expected_hits)
 end
 
-# ╔═╡ 5e56acfa-a535-45c5-aced-ef8c3946f6ec
-begin
-	new_w = photons[:, :total_weight].* target.acceptance.pos_wl_acc_1.(photons[:, :wavelength]) ./ 0.0016
-	
-	fig, ax, _ = hist(photons[:, :wavelength], weights=new_w)
-	hist!(ax, photons[:, :wavelength], weights=photons[:, :total_weight])
-	fig
-end
-
 # ╔═╡ ef63f6d2-6ff5-43d8-890a-7ad88caf20ca
 begin
 	sum(expected_hits_per_pmt[:, :expected_hits]) / sum(photons[:, :total_weight])
 	#target.pmt_area * get_pmt_count(target) / (π * target.shape.radius^2)
+end
+
+# ╔═╡ db851651-d778-4335-a051-b9abf3fed89f
+begin
+	wavelengths = 300:1.:800
+	
+	lines(wavelengths, target.acceptance.pos_wl_acc_1.(wavelengths) )#.* target.quantum_eff.rel_acceptance(wavelengths))
+
 end
 
 # ╔═╡ 8e767195-bdfd-4465-b1ee-2627e5ede972
@@ -252,6 +253,7 @@ As well as other targets:
 
 # ╔═╡ Cell order:
 # ╠═6d7c401a-ac83-11ee-24f7-3510dd251473
+# ╠═b4470b38-465c-494c-b363-4ad26118141f
 # ╠═86f89ecd-bbed-4589-991f-c9c04cbdce22
 # ╠═40c6cec6-108e-4a62-8001-d654c0b5780d
 # ╟─022c1191-b77e-42a1-a3eb-c630725880a4
@@ -266,6 +268,6 @@ As well as other targets:
 # ╟─0612d2e1-aa19-4222-bede-84d7b7539ef0
 # ╠═fe4af264-831c-4a74-8571-00976a5ad026
 # ╠═a1cbdf5b-a0d9-4fc0-b602-b40f76799ae4
-# ╠═5e56acfa-a535-45c5-aced-ef8c3946f6ec
 # ╠═ef63f6d2-6ff5-43d8-890a-7ad88caf20ca
+# ╠═db851651-d778-4335-a051-b9abf3fed89f
 # ╠═8e767195-bdfd-4465-b1ee-2627e5ede972

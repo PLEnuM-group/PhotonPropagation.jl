@@ -390,14 +390,7 @@ function check_pmt_hit(
 
     @inbounds for (hit_id, hit_pos) in enumerate(hit_positions)
 
-        # Did we hit any pmt
-        if rand() >= (total_acc_1[hit_id] + total_acc_2[hit_id])
-            # no hit
-            continue
-        end
-
-        #Choose which pmt we've hit
-
+       
         rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
 
         # Calc hit fraction per PMT
@@ -414,8 +407,21 @@ function check_pmt_hit(
 
             hit_a_pmt_prob = pmt_grp == 1 ? total_acc_1[hit_id] : total_acc_2[hit_id]
 
+            # Reweight to pmt angular acceptance
             prob_vec[pmt_ix] = rel_weight * hit_a_pmt_prob
         end
+
+        # Each probablity in prob_vec averages to 1 for a uniform photon flux
+        prob_vec ./= get_pmt_count(target)
+        
+        hit_prob = sum(prob_vec)
+
+         # Did we hit any pmt
+        if rand() >= hit_prob
+            # no hit
+            continue
+        end
+
         w = ProbabilityWeights(prob_vec)
         pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
     end
