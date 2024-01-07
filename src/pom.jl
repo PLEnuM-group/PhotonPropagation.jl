@@ -402,23 +402,25 @@ function check_pmt_hit(
             # Reweighting
             # Base distribution is cospt ~ U[-1, 1] -> acos(cospt) ~ 0.5*sin(pt)
             pdf_eval = pmt_grp == 1 ? pdf(dists_1, pt) : pdf(dists_2, pt)
-            rel_weight = pt >0 ?  pdf_eval / (0.5 .* sin(pt)) : 0
+            rel_weight = sin(pt) != 0 ?  pdf_eval / (0.5 .* sin(pt)) : 0
 
             hit_a_pmt_prob = pmt_grp == 1 ? total_acc_1[hit_id] : total_acc_2[hit_id]
 
             # Reweight to pmt angular acceptance
-            prob_vec[pmt_ix] = rel_weight * hit_a_pmt_prob
+            prob_vec[pmt_ix] = rel_weight * hit_a_pmt_prob #* π # hit_a_pmt_prob # 
 
         end
 
-        # Each probablity in prob_vec averages to 1 for a uniform photon flux
-        prob_vec ./= get_pmt_count(target)
+        # hit_a_pmt_prob is the probability to hit any pmt from a pmt group assuming
+		# a uniform photon flux. Each pmt group contains 8 pmts, so divide by 8 to #account for the overcounting.
+		# For a uniform photon flux, `hit_prob` should be total_acc_1 + total_acc_2
+        prob_vec ./= 8
         
         hit_prob = sum(prob_vec)
 
 
          # Did we hit any pmt
-        if rand() >= hit_prob
+        if rand() >=  hit_prob # ( total_acc_1[hit_id] + total_acc_2[hit_id])
             # no hit
             continue
         end
