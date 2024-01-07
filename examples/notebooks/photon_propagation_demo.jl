@@ -32,6 +32,8 @@ begin
 		Pkg.PackageSpec(name="HypertextLiteral"),
 		Pkg.PackageSpec(name="Rotations"),
 		Pkg.PackageSpec(name="LinearAlgebra"),
+		Pkg.PackageSpec(name="Distributions"),
+		Pkg.PackageSpec(name="StatsBase"),
     ])
 	Pkg.update()
     Pkg.instantiate()
@@ -46,6 +48,8 @@ begin
 	using HypertextLiteral
 	using Rotations
 	using LinearAlgebra
+	using Distributions
+	using StatsBase
 
 end
 
@@ -158,10 +162,13 @@ md"""
 
 we can also propagate multiple sources at the same time. As an example, we will use PROPOSAl to propagate a muon and use the actual losses instead of the lightsabre
 approximation.
+
+
 """
 
 # ╔═╡ b496274d-6a93-4cc3-a3bb-55ebe47b7148
 begin
+	# Rerun this cell to see a different muon energy loss pattern
 	prop_p, losses = propagate_muon(p)
 	losses_f32 = convert.(Ref(Particle{Float32}), losses)
 	
@@ -214,7 +221,7 @@ If we want to convert the photons that have intersected with our detection targe
 # ╔═╡ a1cbdf5b-a0d9-4fc0-b602-b40f76799ae4
 begin
 	hits = make_hits_from_photons(photons, setup)
-	calc_pe_weight!(hits, setup)
+	#calc_pe_weight!(hits, setup)
 	expected_hits_per_pmt = combine(groupby(hits, :pmt_id), :total_weight => sum => :expected_hits)
 end
 
@@ -228,9 +235,13 @@ end
 begin
 	wavelengths = 300:1.:800
 	
-	lines(wavelengths, target.acceptance.pos_wl_acc_1.(wavelengths) )#.* target.quantum_eff.rel_acceptance(wavelengths))
+	lines(wavelengths, target.acceptance.pos_wl_acc_1.(wavelengths)  #.* target.quantum_eff.rel_acceptance(wavelengths)
+	)
 
 end
+
+# ╔═╡ 3e142e5c-7891-499e-a38c-6d355842500c
+16* target.pmt_area / (target.shape.radius^2 * π )
 
 # ╔═╡ 8e767195-bdfd-4465-b1ee-2627e5ede972
 md"""
@@ -270,4 +281,5 @@ As well as other targets:
 # ╠═a1cbdf5b-a0d9-4fc0-b602-b40f76799ae4
 # ╠═ef63f6d2-6ff5-43d8-890a-7ad88caf20ca
 # ╠═db851651-d778-4335-a051-b9abf3fed89f
+# ╠═3e142e5c-7891-499e-a38c-6d355842500c
 # ╠═8e767195-bdfd-4465-b1ee-2627e5ede972
