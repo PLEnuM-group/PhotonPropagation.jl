@@ -13,6 +13,7 @@ export geometry_type, TargetShape, Spherical, Rectangular, Circular
 export surface_area
 export PhotonTarget, PixelatedTarget, SphericalMultiPMTDetector, get_pmt_count
 export HomogeneousDetector, RectangularDetector, CircularDetector
+export SphericalHomogeneousDetector
 export check_pmt_hit
 export get_pmt_positions
 export apply_wl_acceptance
