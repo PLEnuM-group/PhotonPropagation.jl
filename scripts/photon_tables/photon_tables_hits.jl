@@ -45,6 +45,7 @@ function resample_dataset(infile, outfile, n_resample)
             =#
             orientation = rand(RotMatrix3)
             hits = make_hits_from_photons(photons, [target], orientation)
+            calc_pe_weight!(hits)
 
            
 
