@@ -163,7 +163,7 @@ end
 
 function Base.convert(::Type{POM{T}}, x::POM) where {T}
     shape = convert(Spherical{T}, x.shape)
-    return POM{T}(shape, x.pmt_area, x.pmt_coordinates, x.acceptance, x.module_id)
+    return POM(shape, x.pmt_area, x.pmt_coordinates, x.acceptance, x.quantum_eff, x.module_id)
 end
 
 get_pmt_count(::POM) = 16

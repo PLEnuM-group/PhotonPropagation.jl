@@ -12,7 +12,7 @@ export make_homogenous_clearice_properties
 export salinity, pressure, temperature, vol_conc_small_part, vol_conc_large_part, radiation_length, material_density
 export phase_refractive_index, scattering_length, absorption_length, dispersion, group_velocity, cherenkov_angle, group_refractive_index
 export mean_scattering_angle
-export MediumProperties, WaterProperties, HomogenousIceProperties
+export MediumProperties, WaterProperties, HomogenousIceProperties, SimpleMediumProperties
 export scattering_function
 
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
@@ -156,6 +156,7 @@ end
 
 include("water_properties.jl")
 include("ice_properties.jl")
+include("simple_medium.jl")
 
 
 end # Module
