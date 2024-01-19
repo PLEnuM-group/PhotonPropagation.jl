@@ -2,6 +2,9 @@ using PhotonPropagation
 using StaticArrays
 using PhysicsTools
 using CairoMakie
+using CSV
+using DataFrames
+
 
 
 begin

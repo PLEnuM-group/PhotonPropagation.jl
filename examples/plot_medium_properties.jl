@@ -1,5 +1,6 @@
 using PhotonPropagation
 using CairoMakie
+using PhysicsTools
 
 function plot_medium(medium, fig, axes)
     wavelengths = 350:1.:700
@@ -37,6 +38,10 @@ medium3 = make_cascadia_medium_properties(0.95, 1.1, 1.1)
 fig, axes = plot_medium(medium2, fig, axes)
 fig, axes = plot_medium(medium3, fig, axes)
 fig
+
+wls = 300:1.:800.
+
+plot(wls, frank_tamm.(wls, 1.4))
 
 
 
