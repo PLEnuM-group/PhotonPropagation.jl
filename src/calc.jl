@@ -8,8 +8,8 @@ using DataFrames
 using LinearAlgebra
 using ..Medium
 using ..Detection
-using ..Processing
 using ..LightYield
+using ..PhotonPropagationSetup
 
 
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)

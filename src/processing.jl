@@ -6,46 +6,26 @@ using LinearAlgebra
 using StaticArrays
 using StructTypes
 using Distributions
+using PhysicsTools
+using StatsBase
+using PoissonRandom
 using ..Medium
 using ..Spectral
 using ..Detection
 using ..LightYield
 using ..PhotonPropagationCuda
+using ..Calc
+using ..PhotonPropagationSetup
 
-
-export PhotonPropSetup
 export make_hits_from_photons, propagate_photons
 export calc_total_weight!
 export calc_number_of_steps
 export calc_pe_weight!
+export propagate_particles
+export resample_hits
+export add_pmt_noise!
 
-mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVector{<:PhotonTarget},M<:MediumProperties,C<:SpectralDist}
-    sources::SV
-    targets::ST
-    medium::M
-    spec_dist::C
-    seed::Int64
-end
 
-function PhotonPropSetup(sources::AbstractVector{<:PhotonSource}, targets::AbstractVector{<:PhotonTarget}, medium, spectrum::Spectrum{<:InterpolatedSpectralDist}, seed) 
-    cuda_spectral_dist = make_cuda_spectral_dist(spectrum.spectral_dist, spectrum.wl_range)
-    return PhotonPropSetup(sources, targets, medium, cuda_spectral_dist, seed)
-end
-
-function PhotonPropSetup(sources::AbstractVector{<:PhotonSource}, targets::AbstractVector{<:PhotonTarget}, medium, spectrum::Spectrum, seed) 
-    return PhotonPropSetup(sources, targets, medium, spectrum.spectral_dist, seed)
-end
-
-function PhotonPropSetup(
-    source::PhotonSource,
-    target::PhotonTarget,
-    medium,
-    spectrum,
-    seed)
-
-    setup = PhotonPropSetup([source], [target], medium, spectrum, Int64(seed))
-    return setup
-end
 
 
 function calc_total_weight!(df::AbstractDataFrame, setup::PhotonPropSetup)
@@ -74,7 +54,6 @@ function propagate_photons(setup::PhotonPropSetup, hit_buffer_cpu, hit_buffer_gp
         setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spec_dist, setup.seed,
         hit_buffer_cpu, hit_buffer_gpu, n_steps=steps,
         )
-
 
     df = DataFrame(hits, copycols=copy_output)
 
@@ -155,6 +134,21 @@ function make_hits_from_photons(
     return reduce(vcat, hits)
 end
 
+function resample_hits(hits::AbstractDataFrame, replace=false)
+
+    new_df = DataFrame[]
+    for (key, subdf) in pairs(groupby(hits, [:module_id, :pmt_id]))
+        w = ProbabilityWeights(subdf[:, :total_weight])
+        wsum = sum(w)
+        nhits = pois_rand(wsum)
+        ixs = sample(1:nrow(subdf), w, nhits, replace=replace)
+        push!(new_df, DataFrame(subdf[ixs, :], copycols=true))
+    end
+    return reduce(vcat, new_df)
+end
+
+
+
 """
     calc_number_of_steps(sca_len, cutoff_distance, percentile=0.9)
 
@@ -173,8 +167,7 @@ function calc_number_of_steps(sca_len, cutoff_distance, percentile=0.9)
     return n_steps
 end
 
-function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
-    targets = setup.targets
+function calc_pe_weight!(photons::AbstractDataFrame, targets::AbstractVector{<:PhotonTarget})
     targ_id_map = Dict([target.module_id => target for target in targets])
 
     if "pos_x" ∉ names(photons)
@@ -196,4 +189,69 @@ function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
     end
     return photons
 end
+
+function calc_pe_weight!(photons::AbstractDataFrame, setup::PhotonPropSetup)
+    targets = setup.targets
+    return calc_pe_weight!(photons, targets)
+end
+
+
+
+function propagate_particles(particles::AbstractVector{<:Particle}, targets::AbstractVector{<:PhotonTarget}, seed, medium::MediumProperties, hit_buffer_cpu, hit_buffer_gpu)
+
+    wl_range = (300.0f0, 800.0f0)
+    spectrum = make_cherenkov_spectrum(wl_range, medium)
+
+    sources = [particle_shape(p) isa Cascade ?
+               ExtendedCherenkovEmitter(convert(Particle{Float32}, p), medium, spectrum) :
+               FastLightsabreMuonEmitter(convert(Particle{Float32}, p), medium, spectrum)
+               for p in particles]
+
+    targets_c::Vector{POM{Float32}} = convert(Vector{POM{Float32}}, targets)
+
+    photon_setup = PhotonPropSetup(sources, targets_c, medium, spectrum, seed)
+    photons = propagate_photons(photon_setup, hit_buffer_cpu, hit_buffer_gpu, copy_output=true)
+
+    if nrow(photons) == 0
+        return nothing
+    end
+    calc_time_residual!(photons, photon_setup)
+
+    rot = RotMatrix3(I)
+
+    hits = make_hits_from_photons(photons, photon_setup, rot)
+    calc_pe_weight!(hits, photon_setup)
+    return hits
+end
+
+function propagate_particles(particles::AbstractVector{<:Particle}, targets::AbstractVector{<:PhotonTarget}, seed, medium::MediumProperties)
+    hbc, hbg = make_hit_buffers()
+    return propagate_particles(particles, targets, seed, medium, hbc, hbg)
+end
+
+
+function add_pmt_noise!(hits::AbstractVector, targets; noise_rate=1E4, time_window=1E4)
+    uni = Uniform(-time_window/2, time_window/2)
+    noise_rate = noise_rate *1E-9
+    n_pmt = get_pmt_count(first(targets))
+
+    data_ix = LinearIndices((1:n_pmt, eachindex(targets)))
+    #ix = LinearIndices((1:n_pmt, eachindex(particles), eachindex(targets)))
+
+    for (pmt_ix, tix) in product(1:n_pmt, eachindex(targets))
+        
+        data_vec = hits[data_ix[pmt_ix, tix]]
+        target = targets[tix]
+
+        noise_hits = pois_rand(noise_rate*time_window)
+        
+        if noise_hits > 0
+            noise_times = rand(uni, noise_hits)
+
+            append!(data_vec, noise_times)
+            sort!(data_vec)
+        end
+    end
+end
+
 end

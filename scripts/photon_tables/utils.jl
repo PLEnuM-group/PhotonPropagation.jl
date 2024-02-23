@@ -41,7 +41,6 @@ function save_hdf!(
         g = fid[group]
     end
 
-
     offset = HDF5.read_attribute(g, "nsims") + 1
     ds_name = format("dataset_{:d}", offset)
 

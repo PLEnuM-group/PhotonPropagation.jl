@@ -5,7 +5,7 @@ using HDF5
 using Base.Iterators
 using ..LightYield
 using ..Detection
-export hit_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple
+export hit_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple, dataframe_to_hit_list
 export save_event
 
 #=
@@ -29,6 +29,21 @@ function hit_list_to_dataframe(hit_list, targets, target_mask)
         end
     end
     return DataFrame(hits_nt)
+end
+
+
+function dataframe_to_hit_list(hits, targets)
+    n_pmt = get_pmt_count(eltype(targets))
+    pmt_target_prod = product(1:n_pmt, targets)
+
+    hit_list = Vector{Vector{Float64}}(undef, 0)
+    for (pmt_id, target) in pmt_target_prod
+
+        mask = hits.module_id .== target.module_id .&& hits.pmt_id .== pmt_id
+        hit_times = vec(hits[mask, :time])
+        push!(hit_list, hit_times)
+    end
+    return hit_list
 end
 
 
