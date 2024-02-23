@@ -16,11 +16,14 @@ begin
 	pos = SA_F32[0, 0, 0]
 	len = Float32(1E4)
 	t0 = 0f0
-	p = Particle(pos, direction, t0, energy, len, PMuPlus)
+	#p = Particle(pos, direction, t0, energy, len, PMuPlus)
+    p = Particle(pos, direction, t0, energy, len, PEPlus)
 	
+
 	wl_range = (300f0, 800f0)
 	spectrum = make_cherenkov_spectrum(wl_range, medium)
-	source = FastLightsabreMuonEmitter(p, medium, spectrum)
+	#source = FastLightsabreMuonEmitter(p, medium, spectrum)
+    source = ExtendedCherenkovEmitter(p, medium, spectrum)
 
     tpos = SA_F32[0f0, 30f0, 5f0]
     module_id = 1
