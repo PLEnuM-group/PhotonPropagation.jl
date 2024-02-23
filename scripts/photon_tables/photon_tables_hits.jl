@@ -20,6 +20,9 @@ function resample_dataset(infile, outfile, n_resample)
     datasets = keys(fid[group])
     close(fid)
 
+    fid = h5open(outfile, "w")
+    close(fid)
+
     for ds in datasets
     
         fid = h5open(infile)
@@ -29,13 +32,13 @@ function resample_dataset(infile, outfile, n_resample)
         )
 
 
+
         sim_attrs = Dict(attrs(fid[group][ds]))
 
         direction::SVector{3,Float32} = sph_to_cart(acos(sim_attrs["dir_costheta"]), sim_attrs["dir_phi"])
         ppos =  JSON3.read(sim_attrs["source_pos"], SVector{3, Float32})
 
         target = POM(SA_F32[0, 0, 0], UInt16(1))
-        
         close(fid)
 
         for _ in 1:n_resample
@@ -45,9 +48,7 @@ function resample_dataset(infile, outfile, n_resample)
             =#
             orientation = rand(RotMatrix3)
             hits = make_hits_from_photons(photons, [target], orientation)
-            calc_pe_weight!(hits)
-
-           
+            calc_pe_weight!(hits, [target])
 
             #=
             Rotating the module (active rotation) is equivalent to rotating the coordinate system

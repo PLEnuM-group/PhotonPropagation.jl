@@ -12,15 +12,16 @@ using PairPlots
 using StatsBase
 
 
-pmt_pos = get_pmt_positions(make_pone_module(SA[0., 0., 0.], 1), RotMatrix3(I))
+pmt_pos = get_pmt_positions(POM(SA[0., 0., 0.], 1), RotMatrix3(I))
+
+
+
+fname = "/home/wecapstor3/capn/capn100h/snakemake/photon_tables_perturb/extended/hits/photon_table_hits_extended_dmin_1_dmax_200_emin_100_emax_100000.0_0.hd5"
+stats = []
 
 fid = h5open(fname, "r")
 
-fid["pmt_hits"]["dataset_1041"][:, :]
-
-fname = joinpath(ENV["WORK"], "photon_tables/extended/photon_table_extended_0.hd5")
-
-stats = []
+fid["pmt_hits"]["dataset_1"]
 
 for ds in fid["photons"]
     atts = attrs(ds)
