@@ -22,14 +22,17 @@ using DataStructures
 function proc_sim(photons, setup)
     hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
     calc_time_residual!(hits, setup)
+    calc_pe_weight!(hits, setup)
     n_photons = sum(photons[:, :total_weight])
+    n_hits = sum(hits[:, :total_weight])
+
     hits_per_pmt = combine(groupby(hits, :pmt_id), :total_weight => sum => :nhits)
 
     pmt_max = nrow(hits) > 0 ? hits_per_pmt[argmax(hits_per_pmt[:, :nhits]), :pmt_id] : 0
 
     summary_stats = DataFrame(
         n_photons=n_photons,
-        n_hits=nrow(hits),
+        n_hits=n_hits,
         pmt_max=pmt_max,
     )
 
@@ -229,10 +232,12 @@ function scan_phi(target, medium, spectrum, source_f; n_samples=10, distance=20,
     return stats
 end
 
+
 function run_scan(settings_dict)
 
     target = POM(SA_F32[0, 0, 0], 1)
-    medium = make_cascadia_medium_properties(Float32(settings_dict[:g]))   
+
+    medium = make_cascadia_medium_properties(Float32(settings_dict[:g]), Float32(settings_dict[:abs_scale]), Float32(settings_dict[:sca_scale]))   
 
     if settings_dict[:source_type] == "isotropic"
         source_gen = (pos, _) -> PointlikeIsotropicEmitter(pos, 0f0, Int(settings_dict[:n_photons]))
@@ -253,7 +258,7 @@ function run_scan(settings_dict)
         function _gen(pos, dir)
             ppos = pos .- (settings_dict[:length] / 2) .* dir
             particle = Particle(Float32.(ppos), dir, 0f0, Float32(settings_dict[:energy]), Float32(settings_dict[:length]), PMuMinus)
-            return LightsabreMuonEmitter(particle, medium, spectrum)
+            return FastLightsabreMuonEmitter(particle, medium, spectrum)
         end
 
         source_gen = _gen
@@ -404,15 +409,6 @@ function _plot_comparison!(stats, amp_dict, g)
         scatter!(ax2, stats[:, :distance], pull, color=colors[i])
 
     end
-
-   
-  
-    #scatter!(ax, stats[:, :distance], stats[:, :n_photons_mean], label="Sphere Hits", color=colors[1])
-    #scatter!(ax, stats[:, :distance], stats[:, :n_hits], color=(:red, 0.5))
-    
-    #ylims!(ax, 1E-2, 3E3)
-    axislegend(ax)
-       
     n = nrow(stats)
 
     col = Makie.wong_colors()[3]
@@ -437,9 +433,13 @@ function plot_compare_distance_surrogate(stats, models; settings)
 
     direction = sph_to_cart(settings[:dir_theta], settings[:dir_phi])
     amp_dict = Dict()
+
+
+
     for (mname) in sort(collect(keys(models)))
         model = models[mname]
         expected_amps = Vector{Vector{Float64}}(undef, 0)
+        feat_buffer = create_input_buffer(model, 16, 1)
         for distance in distances
             #position = SA_F64[stats[:pos_x], stats[:pos_y], stats[:pos_z]]
 
@@ -450,7 +450,7 @@ function plot_compare_distance_surrogate(stats, models; settings)
             length = settings[:source_type] == "cascade" ? 0. : Float64(settings[:length])
 
             p = Particle(position, direction, 0., settings[:energy], length, ptype)
-            log_expec_per_pmt, _, = get_log_amplitudes([p], [POM(SA_F64[0, 0, 0], 1)], gpu(model))
+            log_expec_per_pmt, _, = get_log_amplitudes([p], [POM(SA_F64[0, 0, 0], 1)], gpu(model), feat_buffer=feat_buffer, abs_scale=settings[:abs_scale], sca_scale=settings[:sca_scale])
 
             push!(expected_amps, cpu(exp.(log_expec_per_pmt[:, 1, 1])))
         end
@@ -490,6 +490,8 @@ function plot_compare_distance_surrogate(stats, models; settings)
 
     end
 
+    fig2[1, 2] = Legend(fig2, content(fig2[1, 1][1, 1][1, 1][1, 1]))
+
     return fig, fig2
    
 end
@@ -510,7 +512,7 @@ function plot_compare_time_dist(hits, models; settings)
     target = POM(SA_F32[0, 0, 0], 1)
     medium = make_cascadia_medium_properties(settings[:g])
 
-    fig, fig2 = compare_mc_model([p], [target], models, medium, h; oversampling=settings[:n_samples], bin_width=0.5)
+    fig, fig2 = compare_mc_model([p], [target], models, medium, h; oversampling=settings[:n_samples], bin_width=0.5, abs_scale=settings[:abs_scale], sca_scale=settings[:sca_scale])
     return fig, fig2
 end
 
@@ -527,7 +529,7 @@ function plot_compare_time_dist_single(hits, models; settings)
     target = POM(SA_F32[0, 0, 0], 1)
     medium = make_cascadia_medium_properties(settings[:g])
 
-    fig, fig2 = compare_mc_model([p], [target], models, medium, hits; oversampling=settings[:n_samples], bin_width=0.5)
+    fig, fig2 = compare_mc_model([p], [target], models, medium, hits; oversampling=settings[:n_samples], bin_width=0.5, abs_scale=settings[:abs_scale], sca_scale=settings[:sca_scale])
     return fig, fig2
 end
 
@@ -555,7 +557,7 @@ configs = Dict(
         :pos_theta => 0.2,
         :pos_phi => 1.3
     ),
-    =#
+    
     "casc_phi" => Dict(
         :source_type=>"cascade",
         :scan_type=>"phi",
@@ -566,7 +568,10 @@ configs = Dict(
         :dir_theta => 0.1,
         :dir_phi => 0.3,
         :return_hits => true,
+        :abs_scale => 0.95,
+        :sca_scale => 1.05,
     ),
+    =#
     "casc_dist" => Dict(
         :source_type=>"cascade",
         :scan_type=>"distance",
@@ -577,7 +582,9 @@ configs = Dict(
         :dir_phi => 0.3,
         :pos_theta => 0.2,
         :pos_phi => 1.3,
-        :return_hits => true
+        :return_hits => true,
+        :abs_scale => 0.95,
+        :sca_scale => 1.05,
     ),
      "track_dist" => Dict(
         :source_type=>"track",
@@ -589,6 +596,8 @@ configs = Dict(
         :dir_theta => 0.3,
         :dir_phi => 0.5,
         :return_hits => true,
+        :abs_scale => 0.95,
+        :sca_scale => 1.05,
     ),
     "track_single" => Dict(
         :source_type=>"track",
@@ -602,7 +611,9 @@ configs = Dict(
         :pos_x => 5,
         :pos_y => 6,
         :pos_z => 10,
-        :return_hits => true
+        :return_hits => true,
+        :abs_scale => 0.95,
+        :sca_scale => 1.05,
     ),
     "track_single_timing_uncert" => Dict(
         :source_type=>"track",
@@ -616,19 +627,36 @@ configs = Dict(
         :pos_x => 5,
         :pos_y => 6,
         :pos_z => 10,
-        :return_hits => true
-    )
+        :return_hits => true,
+        :abs_scale => 0.95,
+        :sca_scale => 1.05,
+    ),
+    #=
+    "casc_single_abs" => Dict(
+        :source_type=>"casc",
+        :scan_type=>"single",
+        :g=>0.95,
+        :n_samples=> 20,
+        :energy => 6E4,
+        :length => 0.,
+        :dir_theta => 0.3,
+        :dir_phi => 0.5,
+        :pos_x => 5,
+        :pos_y => 6,
+        :pos_z => 10,
+        :return_hits => true,
+        :abs_scale => 0.9:0.1:1.1,
+        :sca_scale => 1.        
+    ),
+    =#
 )
-
-
-
 
 jldopen("validation.jld2", "w") do file
 end
 
 for (key, conf) in configs
+    println("Running $key")
     stats, hits = run_scan(conf)
-
     jldopen("validation.jld2", "a") do file
         file["$key/stats"] = stats
         file["$key/hits"] = hits
@@ -639,7 +667,7 @@ end
 PROJECT_ROOT = pkgdir(PhotonPropagation)
 figure_dir = joinpath(PROJECT_ROOT, "figures")
 
-model_path = joinpath(ENV["WORK"], "snakemake/time_surrogate")
+model_path = joinpath(ENV["ECAPSTOR"], "snakemake/time_surrogate_perturb")
 models_casc = Dict(
     "A1S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
     "A2S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_2_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
@@ -656,27 +684,37 @@ models_track = Dict(
     "Model C" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_3_FNL.bson")),
 )
 
-models_track_15 = Dict(
-    "Model A (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
-    "Model B (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
-    "Model C (1.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_1.5_1_FNL.bson")),
+models_track_2 = Dict(
+    "Model A (2ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2_1_FNL.bson")),
+    "Model B (2ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2_1_FNL.bson")),
+    "Model C (2ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2_1_FNL.bson")),
 )
 
-models_track_25 = Dict(
-    "Model A (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_1_FNL.bson")),
-    "Model B (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_2_FNL.bson")),
-    "Model C (2.5ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_2.5_4_FNL.bson")),
+models_track_3 = Dict(
+    "Model A (3ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_3_1_FNL.bson")),
+    "Model B (3ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_3_2_FNL.bson")),
+    "Model C (3ns)" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_3_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_3_3_FNL.bson")),
 )
 
-all_models_track = Dict(0 => models_track, 1.5 => models_track_15) #2.5 => models_track_25)
+all_models_track = Dict(0 => models_track, 2 => models_track_2) #2.5 => models_track_25)
 
-extension = "svg"
+extension = "png"
 
-jldopen("validation.jld2", "r") do file
+
+set_theme!()
+
+fid = jldopen(joinpath(PROJECT_ROOT, "examples/validation.jld2"), "r")
+fig1, fig2 = plot_compare_distance_surrogate(fid["casc_dist"]["stats"], models_casc, settings=fid["casc_dist"]["settings"])
+
+
+jldopen(joinpath(PROJECT_ROOT, "examples/validation.jld2"), "r") do file
+    #=
     fontsize_theme = Theme(
         fontsize = 30, linewidth=3,
         Axis=(xlabelsize=35, ylabelsize=35))
     set_theme!(fontsize_theme)
+    =#
+    @show keys(file)
     for key in keys(file)
         stats = file[key]["stats"]
         hits = file[key]["hits"]
@@ -685,11 +723,11 @@ jldopen("validation.jld2", "r") do file
         if settings[:scan_type] == "phi"
             fig = plot_phi_scans(stats, POM(SA_F64[0, 0, 0], 1), joinpath(figure_dir, "$(key)_scan.mp4"))
         elseif settings[:scan_type] == "distance"
-            medium = make_cascadia_medium_properties(settings[:g])
+            medium = make_cascadia_medium_properties(settings[:g], settings[:abs_scale], settings[:sca_scale])
             wl = haskey(settings, :wavelength) ? settings[:wavelength] : 450.
 
             fig = plot_distance_scans(stats, POM(SA_F64[0, 0, 0], 1), absorption_length(wl, medium), settings=settings)
-            save(joinpath(figure_dir, "$(key)_scan.png"), fig)
+            save(joinpath(figure_dir, "$(key)_scan.$(extension)"), fig)
         end
        
         if settings[:scan_type] == "distance" && settings[:source_type] != "isotropic"
