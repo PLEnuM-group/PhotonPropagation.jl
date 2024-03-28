@@ -88,8 +88,14 @@ zs = 0:0.1:20
 fig, ax, _ = lines(zs, longitudinal_profile.(zs, Ref(lparam)), label="1E3 GeV",
     ylabel="PDF", title="Longitudinal Profile", dpi=150)
 lines!(ax, zs, longitudinal_profile.(p1.energy, zs, Ref(medium), Ref(p1.type)))
+lines!(ax, zs, longitudinal_profile.(p2.energy, zs, Ref(medium), Ref(p2.type)))
 fig
 
 target = DOM(SA_F32[0., 0., 30.], 1)
 
-hbc, hbg = 
+hbc, hbg = make_hit_buffers()
+
+spectrum = make_cherenkov_spectrum((300f0, 800f0), medium)
+source = ExtendedCherenkovEmitter(p1, medium, spectrum)
+setup = PhotonPropSetup([source], [target], medium, spectrum, 1)
+photons = propagate_photons(setup, hbc, hbg)
