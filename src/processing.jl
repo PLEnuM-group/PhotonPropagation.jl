@@ -52,14 +52,14 @@ function propagate_photons(setup::PhotonPropSetup, hit_buffer_cpu, hit_buffer_gp
 
     hits, n_ph_sim = run_photon_prop_no_local_cache!(
         setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spec_dist, setup.seed,
-        hit_buffer_cpu, hit_buffer_gpu, n_steps=steps,
+        hit_buffer_cpu, hit_buffer_gpu, n_steps=steps, photon_scaling=setup.photon_scaling
         )
 
     df = DataFrame(hits, copycols=copy_output)
 
     mod_ids = [targ.module_id for targ in setup.targets]
     df[!, :module_id] .= mod_ids[df[:, :module_id]]
-    df[!, :base_weight] .= n_ph_sim / sum([source.photons for source in setup.sources])
+    df[!, :base_weight] .= sum([source.photons for source in setup.sources]) / n_ph_sim
     calc_total_weight!(df, setup)
 
     return df
