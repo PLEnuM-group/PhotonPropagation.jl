@@ -227,6 +227,30 @@ function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVe
 
     isec = b >= 0
 
+    # Now sanitize b so that sqrt wont throw
+    b = abs(b)
+    assume(b >= 0)
+
+    #=
+    if isec
+        d =  -a - sqrt(b)
+    else
+        d = -1
+    end
+    =#    
+
+    d::T = ifelse(
+        isec,
+        -a - sqrt(b),
+        -1f0)
+
+    return ifelse(
+        (d > 0) & (d < step_size),
+        (true, d),
+        (false, NaN32)
+    )
+
+    #=
     if !isec
         return false, NaN32
     end
@@ -242,6 +266,7 @@ function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVe
     else
         return false, NaN32
     end
+    =#
 
 end
 
@@ -320,7 +345,8 @@ function cuda_propagate_photons!(
     spectrum::SpectralDist,
     targets::CuDeviceVector{<:TargetShape},
     medium::MediumProperties{T},
-    nsteps::Int32) where {T}
+    nsteps::Int32,
+    photon_scaling::Float32) where {T}
 
     block = blockIdx().x
     thread = threadIdx().x
@@ -336,13 +362,15 @@ function cuda_propagate_photons!(
     Random.seed!(seed + global_thread_index)
 
    
-    this_n_photons, remainder = divrem(source.photons, n_threads_total)
+    this_n_photons, remainder = divrem(source.photons * photon_scaling, n_threads_total)
 
     if global_thread_index <= remainder
         this_n_photons += 1
     end
 
     n_photons_simulated = Int64(0)
+
+    n_targets = length(targets)
 
     @inbounds for i in 1:this_n_photons
         if err_code == 1
@@ -363,6 +391,8 @@ function cuda_propagate_photons!(
         c_grp::T = group_velocity(wavelength, medium)
         assume(c_grp > 0)
 
+        
+
         for nstep in Int32(1):nsteps
 
             eta = rand(T)
@@ -373,8 +403,9 @@ function cuda_propagate_photons!(
 
             isec = false
             dist_to_target = 0.0f0
-            module_ix = 0
-            for (ix, target) in enumerate(targets)
+            module_ix = Int32(0)
+            for ix in Int32(1):n_targets
+                target = targets[ix]
                 isec, d = check_intersection(target, pos, dir, step_size)
 
                 if isec
@@ -415,9 +446,8 @@ function cuda_propagate_photons!(
             break
        
         end
-        if err_code == 0
-            n_photons_simulated += 1
-        end
+        
+        n_photons_simulated = ifelse(err_code == 0, n_photons_simulated += 1, n_photons_simulated)
 
     end
 
@@ -628,7 +658,8 @@ function run_photon_prop_no_local_cache!(
     seed::Int64,
     photon_hits_cpu::StructArray{PhotonHit{Float32,time_type}},
     photon_hits_gpu::StructArray{PhotonHit{Float32,time_type}}; 
-    n_steps=15) where {time_type <: Real}
+    n_steps=15,
+    photon_scaling=1.) where {time_type <: Real}
     
     #avail_mem = CUDA.totalmem(collect(CUDA.devices())[1])
     #max_total_stack_len = calculate_max_stack_size(0.8 * avail_mem, Float32, time_type)
@@ -642,18 +673,20 @@ function run_photon_prop_no_local_cache!(
     targets = CuVector(targets)
 
 
-    kernel = @cuda always_inline=true launch = false cuda_propagate_photons!(
+    kernel = @cuda always_inline=true launch = false maxregs=64 cuda_propagate_photons!(
         photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
-        sources[1], spectrum, targets, medium, Int32(n_steps))
+        sources[1], spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
 
     blocks, threads = CUDA.launch_configuration(kernel.fun)
+    # @show blocks, threads
+    # @show CUDA.registers(kernel)
 
     # Can assign photons to sources by keeping track of stack_idx for each source
     for source in sources
         
-        CUDA.@sync @cuda always_inline=true threads=threads blocks=blocks cuda_propagate_photons!(
+        CUDA.@sync @cuda always_inline=true threads=threads blocks=blocks maxregs=64 cuda_propagate_photons!(
                 photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
-                source, spectrum, targets, medium, Int32(n_steps))
+                source, spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
         # We ran out of memory
         if Vector(err_code)[1] == 1
             throw(PhotonPropOOMException())
