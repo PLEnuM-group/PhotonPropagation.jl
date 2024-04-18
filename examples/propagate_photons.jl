@@ -5,43 +5,49 @@ using CairoMakie
 using CSV
 using DataFrames
 
+mean_sca_angle = 0.95f0
+medium = make_cascadia_medium_properties(mean_sca_angle)
+# We first define a `particle` and then convert into a light source
+energy = Float32(1E5)
+direction = SA_F32[0., 1., 0.]
+pos = SA_F32[0, 0, 0]
+len = Float32(1E4)
+t0 = 0f0
+#p = Particle(pos, direction, t0, energy, len, PMuPlus)
+p = Particle(pos, direction, t0, energy, len, PEPlus)
 
 
-begin
-	mean_sca_angle = 0.95f0
-    medium = make_cascadia_medium_properties(mean_sca_angle)
-    # We first define a `particle` and then convert into a light source
-	energy = Float32(1E5)
-	direction = SA_F32[0., 1., 0.]
-	pos = SA_F32[0, 0, 0]
-	len = Float32(1E4)
-	t0 = 0f0
-	#p = Particle(pos, direction, t0, energy, len, PMuPlus)
-    p = Particle(pos, direction, t0, energy, len, PEPlus)
-	
+wl_range = (300f0, 800f0)
+spectrum = make_cherenkov_spectrum(wl_range, medium)
+#source = FastLightsabreMuonEmitter(p, medium, spectrum)
+source = ExtendedCherenkovEmitter(p, medium, spectrum)
 
-	wl_range = (300f0, 800f0)
-	spectrum = make_cherenkov_spectrum(wl_range, medium)
-	#source = FastLightsabreMuonEmitter(p, medium, spectrum)
-    source = ExtendedCherenkovEmitter(p, medium, spectrum)
+tpos = SA_F32[0f0, 30f0, 5f0]
+module_id = 1
+target = POM(tpos, module_id)
 
-    tpos = SA_F32[0f0, 30f0, 5f0]
-    module_id = 1
-    target = POM(tpos, module_id)
-    
-    # Setup propagation
-    seed = 1
-        
-    setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
-    buffer_cpu, buffer_gpu = make_hit_buffers();
-    # Run photon propagation
-    @time photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
+# Setup propagation
+seed = 1
+buffer_cpu, buffer_gpu = make_hit_buffers();
 
-end;
-    
+setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
+# Run photon propagation
+@time photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
+  
 hits = make_hits_from_photons(photons, setup)
 sum(calc_pe_weight!(hits, setup)[:, :total_weight])
 
+# Use oversampling
+setup = PhotonPropSetup([source], [target], medium, spectrum, seed, photon_scaling=5.)
+# Run photon propagation
+setup
+
+@time photons_ov = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
+
+photons_ov
+
+hits_ov = make_hits_from_photons(photons_ov, setup)
+sum(calc_pe_weight!(hits_ov, setup)[:, :total_weight])
 
 
 
