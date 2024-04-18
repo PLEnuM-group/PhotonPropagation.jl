@@ -2,7 +2,6 @@ using PhotonPropagation
 using StaticArrays
 using Random
 using DataFrames
-using Formatting
 using Distributions
 using Rotations
 using LinearAlgebra

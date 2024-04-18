@@ -1,6 +1,6 @@
 using StatsBase
 using HDF5
-using Formatting
+using Format
 export save_hdf!
 
 """
