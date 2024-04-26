@@ -11,7 +11,7 @@ export rel_additional_track_length
 
 export AngularEmissionProfile
 export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, CherenkovEmitter, PointlikeCherenkovEmitter
-export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, LightsabreMuonEmitter
+export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, CollimatedIsotropicEmitter
 export FastLightsabreMuonEmitter
 export cherenkov_ang_dist, cherenkov_ang_dist_int
 export split_source, rescale_source
@@ -481,6 +481,7 @@ function rescale_source(em::T, factor::Number) where {T<:PhotonSource}
     end
     return T(args...)
 end
+
 """
     struct AxiconeEmitter{T} <: PhotonSource{T}
 
@@ -492,7 +493,7 @@ A struct representing an axicone emitter.
 - `time::T`: The time at which the photons are emitted.
 - `photons::Int64`: The number of photons to be emitted.
 - `angle::T`: The angle of emission.
-
+- `beam_divergence::T`: The divergence angle of the emitted photons.
 """
 struct AxiconeEmitter{T} <: PhotonSource{T}
     position::SVector{3,T}
@@ -500,6 +501,7 @@ struct AxiconeEmitter{T} <: PhotonSource{T}
     time::T
     photons::Int64
     angle::T
+    beam_divergence::T
 end
 
 StructTypes.StructType(::Type{<:AxiconeEmitter}) = StructTypes.Struct()
@@ -546,6 +548,29 @@ struct PointlikeIsotropicEmitter{T} <: PhotonSource{T}
 end
 
 StructTypes.StructType(::Type{<:PointlikeIsotropicEmitter}) = StructTypes.Struct()
+
+
+"""
+    struct CollimatedIsotropicEmitter{T} <: PhotonSource{T}
+
+A struct representing a point-like isotropic photon emitter.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in 3D space.
+- `time::T`: The time at which the photons are emitted.
+- `photons::Int64`: The number of photons emitted.
+- `cut_angle_cos`: Cosine of the maximum emission angle
+
+"""
+struct CollimatedIsotropicEmitter{T} <: PhotonSource{T}
+    position::SVector{3,T}
+    time::T
+    photons::Int64
+    cut_angle_cos::T
+end
+
+StructTypes.StructType(::Type{<:CollimatedIsotropicEmitter}) = StructTypes.Struct()
+
 
 
 """

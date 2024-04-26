@@ -7,7 +7,7 @@ using Rotations
 using LinearAlgebra
 using CairoMakie
 using LsqFit
-using Formatting
+using Format
 using StatsBase
 using Arrow
 using JSON3
@@ -557,7 +557,7 @@ configs = Dict(
         :pos_theta => 0.2,
         :pos_phi => 1.3
     ),
-    
+    =#
     "casc_phi" => Dict(
         :source_type=>"cascade",
         :scan_type=>"phi",
@@ -571,7 +571,7 @@ configs = Dict(
         :abs_scale => 0.95,
         :sca_scale => 1.05,
     ),
-    =#
+
     "casc_dist" => Dict(
         :source_type=>"cascade",
         :scan_type=>"distance",
@@ -604,15 +604,15 @@ configs = Dict(
         :scan_type=>"single",
         :g=>0.95,
         :n_samples=> 20,
-        :energy => 6E4,
-        :length => 400,
+        :energy => 6E5,
+        :length => 10000,
         :dir_theta => 0.3,
-        :dir_phi => 0.5,
+        :dir_phi => 2.5,
         :pos_x => 5,
         :pos_y => 6,
         :pos_z => 10,
         :return_hits => true,
-        :abs_scale => 0.95,
+        :abs_scale => 0.97,
         :sca_scale => 1.05,
     ),
     "track_single_timing_uncert" => Dict(
@@ -669,14 +669,14 @@ figure_dir = joinpath(PROJECT_ROOT, "figures")
 
 model_path = joinpath(ENV["ECAPSTOR"], "snakemake/time_surrogate_perturb")
 models_casc = Dict(
-    "A1S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
-    "A2S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_2_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
-    "A1S3" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_3_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_1_FNL.bson")),
+    "A1S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_1_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_2_FNL.bson")),
+    "A2S1" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_2_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_2_FNL.bson")),
+    "A1S3" =>  PhotonSurrogate(joinpath(model_path, "extended/amplitude_3_FNL.bson"), joinpath(model_path, "extended/time_uncert_0_3_FNL.bson")),
 
 )
 
 models_track = Dict(
-    "Model A" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_2_FNL.bson")),
+    "Model A" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_1_FNL.bson")),
     #"A2S1" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_1_FNL.bson")),
     #"A1S2" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_1_FNL.bson"), joinpath(model_path, "lightsabre/time_2_FNL.bson")),
     "Model B" =>  PhotonSurrogate(joinpath(model_path, "lightsabre/amplitude_2_FNL.bson"), joinpath(model_path, "lightsabre/time_uncert_0_2_FNL.bson")),
@@ -705,6 +705,7 @@ set_theme!()
 
 fid = jldopen(joinpath(PROJECT_ROOT, "examples/validation.jld2"), "r")
 fig1, fig2 = plot_compare_distance_surrogate(fid["casc_dist"]["stats"], models_casc, settings=fid["casc_dist"]["settings"])
+fig2
 
 
 jldopen(joinpath(PROJECT_ROOT, "examples/validation.jld2"), "r") do file
