@@ -79,6 +79,7 @@ function main(parsed_args)
             grp["abs_scale"] = abs_scale
             grp["sca_scale"] = sca_scale
         end
+        gc()
     end
 end
 
