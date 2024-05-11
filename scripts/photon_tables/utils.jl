@@ -76,6 +76,16 @@ function make_setup(
             PEMinus
         )
         source = ExtendedCherenkovEmitter(particle, medium, spectrum)
+    elseif mode == :hadronic
+            particle = Particle(
+                pos,
+                dir,
+                0.0f0,
+                Float32(energy),
+                0.0f0,
+                PHadronShower
+            )
+            source = ExtendedCherenkovEmitter(particle, medium, spectrum)
     elseif mode == :bare_infinite_track
         length = 400f0
         ppos = pos .- length/2 .* dir

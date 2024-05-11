@@ -176,7 +176,7 @@ function run_sims(parsed_args)
     
     hbc, hbg = make_hit_buffers()
 
-    if mode == :extended || mode == :lightsabre
+    if mode == :extended || mode == :hadronic || mode == :lightsabre
 
         sobol = skip(
             SobolSeq(
@@ -238,7 +238,7 @@ end
 
 s = ArgParseSettings()
 
-mode_choices = ["extended", "bare_infinite_track", "pointlike_cherenkov", "lightsabre"]
+mode_choices = ["extended", "hadronic", "bare_infinite_track", "pointlike_cherenkov", "lightsabre"]
 
 @add_arg_table s begin
     "--output"
