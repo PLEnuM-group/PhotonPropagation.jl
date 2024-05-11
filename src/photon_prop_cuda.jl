@@ -114,7 +114,10 @@ function initialize_photon_state(source::AxiconeEmitter{T}, ::MediumProperties, 
     wl = rand(spectrum)
     pos = source.position
     phi = uniform(T(0), T(2 * pi))
-    theta = source.angle + randn(T) * source.beam_divergence
+    theta = source.angle
+    if source.beam_divergence > 0
+        theta += randn(T) * source.beam_divergence
+    end
     dir = rot_from_ez_fast(source.direction, sph_to_cart(theta, phi))
 
     PhotonState(pos, dir, source.time, wl)
