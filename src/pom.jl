@@ -367,9 +367,6 @@ function check_pmt_hit(
 end
 
 
-
-
-
 function check_pmt_hit(
     hit_positions::AbstractVector,
     hit_directions::AbstractVector,
