@@ -84,15 +84,17 @@ function check_pmt_hit(
     target::DOM,
     orientation::Rotation{3,<:Real})
 
+    #rel_pos = (hit_positions .- Ref(target.shape.position)) ./ target.shape.radius
     rotated = Ref(inv(orientation)) .* hit_directions  
-    coszeniths = dot.(rotated, Ref([0, 0, -1]))
 
-    
+
+    coszeniths = getindex.(rotated,3)
+
     ang_acc = target.acceptance.poly_ang.(coszeniths) 
  
     surv_prob = ang_acc #.* wl_acc
 
-    samples = rand(length(coszeniths))
+    samples = rand(length(coszeniths)) * target.acceptance.polymax
     accepted = samples .< surv_prob
 
     pmt_ids = zeros(length(coszeniths))

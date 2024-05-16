@@ -15,8 +15,8 @@ mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVe
     photon_scaling::Float64
 end
 
-function PhotonPropSetup(sources::AbstractVector{<:PhotonSource}, targets::AbstractVector{<:PhotonTarget}, medium, spectrum::Spectrum{<:InterpolatedSpectralDist}, seed; photon_scaling=1.) 
-    cuda_spectral_dist = make_cuda_spectral_dist(spectrum.spectral_dist, spectrum.wl_range)
+function PhotonPropSetup(sources::AbstractVector{<:PhotonSource}, targets::AbstractVector{<:PhotonTarget}, medium, spectrum::Spectrum{<:InterpolatedSpectralDist}, seed; photon_scaling=1., spectrum_interp_steps=30) 
+    cuda_spectral_dist = make_cuda_spectral_dist(spectrum.spectral_dist, spectrum.wl_range, spectrum_interp_steps)
     return PhotonPropSetup(sources, targets, medium, cuda_spectral_dist, seed, photon_scaling)
 end
 

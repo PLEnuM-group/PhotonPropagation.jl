@@ -14,6 +14,7 @@ export phase_refractive_index, scattering_length, absorption_length, dispersion,
 export mean_scattering_angle
 export MediumProperties, WaterProperties, HomogenousIceProperties, SimpleMediumProperties
 export scattering_function
+export mixed_hg_sl_scattering_func_ppc
 
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 abstract type MediumProperties{T<:Real} end
@@ -37,6 +38,9 @@ CUDA-optimized version of Henyey-Greenstein scattering in one plane.
     costheta::T = (1 / (2 * g) * (1 + g^2 - ((1 - g^2) / (1 + g * (2 * eta - 1)))^2))
     #costheta::T = (1 / (2 * g) * (fma(g, g, 1) - (fma(-g, g, 1) / (fma(g, (fma(2, eta, -1)), 1)))^2))
     return clamp(costheta, T(-1), T(1))
+
+
+
 end
 
 """
@@ -54,6 +58,8 @@ function sl_scattering_func(g::T) where {T <: Real}
     return clamp(costheta, T(-1), T(1))
 end
 
+
+
 """
     mixed_hg_sl_scattering_func(g, hg_fraction)
 Mixture model of HG and SL.
@@ -69,6 +75,26 @@ function mixed_hg_sl_scattering_func(g::Real, hg_fraction::Real)
     end
     return sl_scattering_func(g)
 end
+
+function mixed_hg_sl_scattering_func_ppc(g::T, hg_fraction::T) where {T <:Real}
+    xi = rand()
+    sf = hg_fraction
+    gr::T = (1-g)/(1+g)
+	if(xi>sf)
+	  xi=(1-xi)/(1-sf)
+	  xi=2*xi-1
+	  if(g!=0)
+	    ga::T=(1-g*g)/(1+g*xi)
+	    xi=(1+g*g-ga*ga)/(2*g)
+      end
+	else
+	  xi/=sf
+	  xi=2*xi^gr-1
+    end
+    return clamp(xi, T(-1), T(1))
+end
+
+
 
 
 # Interface for MediumProperties

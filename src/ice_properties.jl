@@ -169,4 +169,4 @@ function scattering_length(wavelength::Real, medium::HomogenousIceProperties)
     return oftype(wavelength, 1/sca_coeff * medium.sca_scale)
 end
 
-scattering_function(medium::HomogenousIceProperties) = mixed_hg_sl_scattering_func(mean_scattering_angle(medium), hg_fraction(medium))
+scattering_function(medium::HomogenousIceProperties) = mixed_hg_sl_scattering_func_ppc(mean_scattering_angle(medium), hg_fraction(medium))

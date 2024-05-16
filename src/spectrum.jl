@@ -90,7 +90,7 @@ end
 
 function make_biased_cherenkov_spectrum(bias_function, wl_range, medium)
     sfunc = wl -> frank_tamm(wl, phase_refractive_index(wl, medium)) * bias_function(wl)  * 1E9
-    d = make_spectral_dist(sfunc, wl_range)
+    d = make_spectral_dist(sfunc, wl_range, eltype(wl_range)(0.5))
     return Spectrum(d, sfunc, wl_range)
 end
 
