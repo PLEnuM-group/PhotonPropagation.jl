@@ -9,8 +9,16 @@ CUDA-accelerated Monte-Carlo simulation of photon transport in homogeneous media
 
 ## Installation
 
+This package is registered in the PLEnuM julia package [registry](https://github.com/PLEnuM-group/julia-registry). In order to use this registry run:
+```{julia}
+using Pkg
+pkg"registry add https://github.com/PLEnuM-group/julia-registry"
 ```
-] add https://github.com/PLEnuM-group/PhotonPropagation.jl.git
+
+Then install the package:
+```{julia}
+using Pkg
+pkg"add PhotonPropagation"
 ```
 
 ## Example
