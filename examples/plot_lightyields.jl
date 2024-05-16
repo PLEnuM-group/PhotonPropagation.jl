@@ -12,9 +12,14 @@ using Polynomials
 
 log_energies = 2:0.1:10
 zs = (0:0.1:20.0)# m
-medium = make_cascadia_medium_properties(0.99)
+medium = make_cascadia_medium_properties(0.95)
 wls = 300:0.1:800
 
+
+cos_thetas = [scattering_function(medium) for _ in 1:100000]
+fig, ax, _ = hist(cos_thetas, axis=(xlabel="cos(theta)", ylabel="PDF", yscale=log10), normalization=:pdf, )
+vlines!(ax, mean(cos_thetas), color=:black, linewidth=3, linestyle=:dash)
+fig
 
 
 water_abs = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/water_absorption_wiki.csv");
