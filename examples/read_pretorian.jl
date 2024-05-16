@@ -18,9 +18,7 @@ open("/home/wecapstor3/capn/capn100h/pretorian/simulation_output/g_090_a_26_s_56
         end
     end
 
-    all_photons = []
-
-    for sim in sims
+    for sim in sims[2:end]
 
         sim = Dict(JSON3.read(sim))
         @show sim

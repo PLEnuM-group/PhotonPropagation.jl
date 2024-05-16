@@ -1,5 +1,7 @@
 using PhotonPropagation
 using NeutrinoTelescopes
+using PhotonSurrogateModel
+using NeutrinoSurrogateModelData
 using StaticArrays
 using PhysicsTools
 using DataFrames
@@ -563,9 +565,9 @@ configs = Dict(
         :scan_type=>"phi",
         :g=>0.95,
         :n_samples=> 3,
-        :energy => 3E4,
+        :energy => 5E4,
         :wavelength => 450,
-        :dir_theta => 0.1,
+        :dir_theta => 1.5,
         :dir_phi => 0.3,
         :return_hits => true,
         :abs_scale => 0.95,
@@ -578,10 +580,10 @@ configs = Dict(
         :g=>0.95,
         :n_samples=> 3,
         :energy => 5E4,
-        :dir_theta => 0.1,
+        :dir_theta => 1.5,
         :dir_phi => 0.3,
-        :pos_theta => 0.2,
-        :pos_phi => 1.3,
+        :pos_theta => 3.2,
+        :pos_phi => 4.3,
         :return_hits => true,
         :abs_scale => 0.95,
         :sca_scale => 1.05,
@@ -593,8 +595,8 @@ configs = Dict(
         :n_samples=> 5,
         :energy => 6E4,
         :length => 400,
-        :dir_theta => 0.3,
-        :dir_phi => 0.5,
+        :dir_theta => 1.3,
+        :dir_phi => 5.5,
         :return_hits => true,
         :abs_scale => 0.95,
         :sca_scale => 1.05,
@@ -603,7 +605,7 @@ configs = Dict(
         :source_type=>"track",
         :scan_type=>"single",
         :g=>0.95,
-        :n_samples=> 20,
+        :n_samples=> 5,
         :energy => 6E5,
         :length => 10000,
         :dir_theta => 0.3,
@@ -619,11 +621,11 @@ configs = Dict(
         :source_type=>"track",
         :scan_type=>"single_timeuncert",
         :g=>0.95,
-        :n_samples=> 20,
+        :n_samples=> 5,
         :energy => 6E4,
         :length => 400,
         :dir_theta => 0.3,
-        :dir_phi => 0.5,
+        :dir_phi => 2.5,
         :pos_x => 5,
         :pos_y => 6,
         :pos_z => 10,
