@@ -72,7 +72,7 @@ end
 
 function POMQuantumEff(fname::String)
     df = DataFrame(CSV.File(fname))
-    interp = linear_interpolation(df[:, :wavelength], df[:, :rel_acceptance] ./ maximum(df[:, :rel_acceptance]), extrapolation_bc=0.)
+    interp = linear_interpolation(df[:, :wavelength], df[:, :rel_acceptance], extrapolation_bc=0.)
     return POMQuantumEff(interp)
 end
 
