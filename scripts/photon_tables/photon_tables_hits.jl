@@ -36,7 +36,7 @@ function resample_dataset(infile, outfile, n_resample)
         sim_attrs = Dict(attrs(fid[group][ds]))
 
         direction::SVector{3,Float32} = sph_to_cart(acos(sim_attrs["dir_costheta"]), sim_attrs["dir_phi"])
-        ppos =  JSON3.read(sim_attrs["source_pos"], SVector{3, Float32})
+        ppos = JSON3.read(sim_attrs["source_pos"], SVector{3, Float32})
 
         target = POM(SA_F32[0, 0, 0], UInt16(1))
         close(fid)
