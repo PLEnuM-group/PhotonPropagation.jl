@@ -239,7 +239,7 @@ end
 Shift particle along its direction by `param` (in units of m)
 """
 function shift_particle(particle::Particle{T}, param) where {T <: Real}
-    pos_along = particle.position .+ param .* particle.direction
+    pos_along = particle.position .+ (param .* particle.direction)
 
     t::T = particle.time .+ param / c_vac_m_ns
     return Particle(pos_along, particle.direction, t, particle.energy, particle.length, particle.type)

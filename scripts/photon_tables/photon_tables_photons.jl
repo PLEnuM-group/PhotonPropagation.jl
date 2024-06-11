@@ -11,7 +11,7 @@ using ArgParse
 using PhysicsTools
 using JSON3
 import Base.GC.gc
-
+using LinearAlgebra
 include("utils.jl")
 
 
@@ -47,9 +47,8 @@ function run_sim(
     direction::SVector{3,Float32} = sph_to_cart(acos(dir_costheta), dir_phi)
 
     if mode == :bare_infinite_track || mode == :lightsabre_muon
-        r = direction[2] > 0 ? direction[1] / direction[2] : zero(direction[1])
+        r = direction[2] != 0 ? direction[1] / direction[2] : zero(direction[1])
         ppos = SA_F32[distance/sqrt(1 + r^2), -r*distance/sqrt(1 + r^2), 0]
-
     else
         ppos = SA_F32[0, 0, distance]
     end
