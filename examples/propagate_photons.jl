@@ -4,12 +4,11 @@ using PhysicsTools
 using CairoMakie
 using CSV
 using DataFrames
-
 buffer_cpu, buffer_gpu = make_hit_buffers();
 
-mean_sca_angle = 0.95f0
-medium = make_cascadia_medium_properties(mean_sca_angle, 1f0, 1.1f0)
 
+mean_sca_angle = 0.95f0
+medium = make_cascadia_medium_properties(mean_sca_angle, 1f0, 1.0f0)
 
 # We first define a `particle` and then convert into a light source
 energy = Float32(1E5)
