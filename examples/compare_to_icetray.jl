@@ -8,6 +8,7 @@ using JSON3
 using StatsBase
 using Rotations
 using LinearAlgebra
+using Format
 buffer_cpu, buffer_gpu = make_hit_buffers();
 
 function json_p_to_particle(json_p)
@@ -50,9 +51,10 @@ for event in data_icetray
         ix_hit_map[i] = h[:total_hits_icetray]
     end
 
-    sources = ExtendedCherenkovEmitter.(losses, Ref(medium), Ref(spectrum))
+    sources_biased = ExtendedCherenkovEmitter.(losses, Ref(medium), Ref(spectrum_biased))
+    sources= ExtendedCherenkovEmitter.(losses, Ref(medium), Ref(spectrum))
 
-    setup = PhotonPropSetup(sources, targets_dom, medium, spectrum_biased, 1)
+    setup = PhotonPropSetup(sources_biased, targets_dom, medium, spectrum_biased, 1)
     @time photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
     hits_dom = make_hits_from_photons(photons, setup, RotMatrix3(I), false)
     #calc_pe_weight!(hits, setup)
@@ -76,8 +78,18 @@ for event in data_icetray
     push!(all_sims, sim_results)
 end
 
-reduce(vcat, all_sims)
+all_sims = reduce(vcat, all_sims)
 
 
-hist(reduce(vcat, all_sims)[:, :hits_ratio_pom], axis=(; xlabel="Hits ratio"), ylabel="Counts", bins=0:10)
-hist(reduce(vcat, all_sims)[:, :hits_ratio_dom], axis=(; xlabel="Hits ratio"), ylabel="Counts", bins=0:0.5:10)
+fig, ax, h = hist(all_sims[:, :hits_ratio_pom], axis=(; xlabel="Hits ratio (icetray / julia)", ylabel="Counts"),
+     bins=0:1:40, label=format("POM Mean: {:.2f}", mean(all_sims[:, :hits_ratio_pom])))
+hist!(ax, all_sims[:, :hits_ratio_dom], label=format("DOM Mean: {:.2f}", mean(all_sims[:, :hits_ratio_dom])), bins=0:1:40)
+axislegend()
+fig
+mean(all_sims[:, :hits_ratio_dom])
+
+hist((all_sims[:, :hits_pom] ./ all_sims[:, :hits_dom]), axis=(; xlabel="Hits ratio", ylabel="Counts"))
+
+mean((all_sims[:, :hits_pom] ./ all_sims[:, :hits_dom]))
+
+1/2.5
