@@ -20,7 +20,7 @@ See: https://user-web.icecube.wisc.edu/~dima/work/WISC/ppc/spice/new/paper/a.pdf
 -abs_scale -- Scaling factor for the absorption length
 -sca_scale -- Scaling factor for the scattering length
 """
-Base.@kwdef struct HomogenousIceProperties{T<:Real} <: MediumProperties{T}
+Base.@kwdef struct HomogenousIceProperties{T<:Real} <: MediumProperties
     radiation_length::T # g / cm^2
     mean_scattering_angle::T
     hg_fraction::T

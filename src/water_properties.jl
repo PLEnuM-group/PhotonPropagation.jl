@@ -48,7 +48,7 @@ Properties for a water-like medium. Use unitful constructor to create a value of
 -abs_scale -- Scaling factor for the absorption length
 -sca_scale -- Scaling factor for the scattering length
 """
-struct WaterProperties{T<:Real} <: MediumProperties{T}
+struct WaterProperties{T<:Real} <: MediumProperties
     salinity::T # permille
     pressure::T # atm
     temperature::T #°C

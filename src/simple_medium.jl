@@ -1,4 +1,4 @@
-Base.@kwdef struct SimpleMediumProperties{T <: Real} <: MediumProperties{T}
+Base.@kwdef struct SimpleMediumProperties{T <: Real} <: MediumProperties
     absorption_length::T
     scattering_length::T
     phase_refractive_index::T

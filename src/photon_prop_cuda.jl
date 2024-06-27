@@ -350,7 +350,7 @@ end
 
 
 function cuda_propagate_photons!(
-    out_hits::StructArray{<:PhotonHit},
+    out_hits::StructArray{<:PhotonHit{T}},
     out_stack_pointer::CuDeviceVector{Int64},
     out_n_ph_simulated::CuDeviceVector{Int64},
     out_err_code::CuDeviceVector{Int32},
@@ -358,7 +358,7 @@ function cuda_propagate_photons!(
     source::PhotonSource,
     spectrum::SpectralDist,
     targets::CuDeviceVector{<:TargetShape},
-    medium::MediumProperties{T},
+    medium::MediumProperties,
     nsteps::Int32,
     photon_scaling::Float32) where {T}
 
