@@ -238,6 +238,7 @@ end
 s = ArgParseSettings()
 
 mode_choices = ["extended", "hadronic", "bare_infinite_track", "pointlike_cherenkov", "lightsabre"]
+module_choices = ["POM", "SphericalMultiPMTDetector"]
 
 @add_arg_table s begin
     "--output"
@@ -285,6 +286,11 @@ mode_choices = ["extended", "hadronic", "bare_infinite_track", "pointlike_cheren
     "--perturb_medium"
     help = "Randomly sample abs / sca scales"
     action = :store_true
+    "--module_type"
+    help = "Module Type;  must be one of " * join(module_choices, ", ", " or ")
+    range_tester = (x -> x in module_choices)
+    default = "POM"
+
 end
 parsed_args = parse_args(ARGS, s)
 
