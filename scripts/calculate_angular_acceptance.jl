@@ -165,9 +165,28 @@ end
 sim_path = joinpath(ENV["ECAPSTOR"], "geant4_pmt/30cm_sphere/V15_ch/")
 files = glob("*.csv", sim_path)
 
-df = DataFrame(CSV.File("/home/wecapstor3/capn/capn100h/geant4_pmt/30cm_sphere/V15_ch/sim_320.csv"))
+df = DataFrame(CSV.File("/home/wecapstor3/capn/capn100h/geant4_pmt/30cm_sphere/V15_ch/sim_420.csv"))
+calc_coordinates!(df)
+mask = df[:, :out_VolumeName] .== "photocathode" .&& df[:, :out_Volume_CopyNo] .== 1
 
-mask = df[:, :out_VolumeName] .== "photocathode"
+in_acc_sph = reduce(hcat, cart_to_sph.(eachrow(Matrix(df[:, [:in_norm_x, :in_norm_y, :in_norm_z]]))))
+in_p_acc_sph = reduce(hcat, cart_to_sph.(eachrow(Matrix(df[:, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]]))))
+
+bins_pos_ct = -1:0.2:1
+bins_pos_phi = 0:0.2:(2*π)
+
+h = fit(Histogram, (cos.(in_acc_sph[1, :]), in_acc_sph[2, :]), (bins_pos_ct, bins_pos_phi))
+h_mask = fit(Histogram, (cos.(in_acc_sph[1, mask]), in_acc_sph[2, mask]), (bins_pos_ct, bins_pos_phi))
+h_r = h_mask.weights ./ h.weights
+heatmap(bins_pos_ct, bins_pos_phi, h_r)
+
+h = fit(Histogram, (cos.(in_p_acc_sph[1, :]), in_p_acc_sph[2, :]), (bins_pos_ct, bins_pos_phi))
+h_mask = fit(Histogram, (cos.(in_p_acc_sph[1, mask]), in_p_acc_sph[2, mask]), (bins_pos_ct, bins_pos_phi))
+h_r = h_mask.weights ./ h.weights
+heatmap(bins_pos_ct, bins_pos_phi, h_r)
+
+
+
 
 total_acc_1, total_acc_2, wavelengths, d1, d2, all_hc_1, all_hc_2 = build_acceptance_model(files)
 
@@ -193,6 +212,12 @@ fig
 
 qe = 0.25
 correction_factor = 0.3^2 / 0.2159^2 
+target = POM(SA_F32[0., 0., 10.], UInt16(1))
+
+target
+16*11 / (120*0.9)
+
+550
 
 fig = Figure()
 ax = Axis(fig[1, 1], xlabel="Wavelength(nm)", ylabel="Acceptance (%)",
