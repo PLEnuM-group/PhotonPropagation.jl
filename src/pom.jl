@@ -13,56 +13,6 @@ using MultivariateStats
 using StructTypes
 using Distributions
 
-#=
-struct POMAcceptance{I} <: PMTAcceptance
-    pos_acc_grp_1::Array{Float64, 2}
-    pos_acc_grp_2::Array{Float64, 2}
-    PPCA_grp_1::PPCA{Float64}
-    PPCA_grp_2::PPCA{Float64}
-    bin_edges_1::Vector{Float64}
-    bin_edges_2::Vector{Float64}
-    pos_wl_acc::I    
-end
-
-StructTypes.StructType(::Type{Matrix{N}}) where N<:Number = StructTypes.CustomStruct()
-StructTypes.lower(matrix::Matrix{N}) where N<:Number = (content=vec(matrix), size=size(matrix))
-StructTypes.lowertype(::Type{Matrix{N}}) where N<:Number = @NamedTuple{content::Vector{N}, size::Tuple{Int, Int}}
-function Matrix{N}(matrix::@NamedTuple{content::Vector{N}, size::Tuple{Int, Int}}) where N<:Number 
-   return N.(reshape(matrix.content, (matrix.size)))
-end
-
-StructTypes.StructType(::Type{<:PPCA}) = StructTypes.Struct()
-
-
-function POMAcceptance(pmt_acc_fname::String)
-    fid = h5open(pmt_acc_fname, "r")
-    pos_acc_1 = fid["acc_pmt_grp_1"][:, :]
-    pos_acc_2 = fid["acc_pmt_grp_2"][:, :]
-    att = attrs(fid)
-    edges_x = JSON3.read(att["bin_edges_1"], Vector{Float64})
-    edges_y = JSON3.read(att["bin_edges_2"], Vector{Float64})
-    ppca_1 = JSON3.read(att["PPCA_grp_1"], PPCA{Float64})
-    ppca_2 = JSON3.read(att["PPCA_grp_2"], PPCA{Float64})
-
-    wl_acc_x = fid["wl_acceptance_factor_x"][:]
-    wl_acc_y = fid["wl_acceptance_factor_y"][:]
-    close(fid)
-     
-    total_acc = linear_interpolation(wl_acc_x, wl_acc_y, extrapolation_bc=0.)
-   
-    return POMAcceptance(
-        pos_acc_1,
-        pos_acc_2,
-        ppca_1,
-        ppca_2,
-        edges_x,
-        edges_y,
-        total_acc)
-end
-=#
-
-
-
 abstract type QuantumEff end
  
 struct POMQuantumEff{I} <: QuantumEff
@@ -225,66 +175,6 @@ function get_pom_pmt_group(pmt_ix)
    return SA[1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2][pmt_ix]
 end
 
-#=
-function check_pmt_hit(
-    hit_positions::AbstractVector,
-    hit_directions::AbstractVector,
-    hit_wavelengths::AbstractVector,
-    prop_weight::AbstractVector,
-    target::POM,
-    orientation::Rotation{3,<:Real})
-
-
-    pmt_positions = get_pmt_positions(target, orientation)
-
-    bins_x = target.acceptance.bin_edges_1
-    bins_y = target.acceptance.bin_edges_2
-    
-    wl_acceptance = target.acceptance.pos_wl_acc.(hit_wavelengths)
-
-    prob_vec = zeros(get_pmt_count(target))
-    pmt_hit_ids = zeros(length(hit_positions))
-
-    ppcas = [target.acceptance.PPCA_grp_1, target.acceptance.PPCA_grp_2]
-    acceptances = [target.acceptance.pos_acc_grp_1, target.acceptance.pos_acc_grp_2]
-
-
-    @inbounds for (hit_id, (hit_pos, hit_dir)) in enumerate(zip(hit_positions, hit_directions))
-        
-        # Continue to next photon if this one doesn't survive propagation
-        if rand() > prop_weight[hit_id]
-            continue
-        end
-        
-        rel_pos = (hit_pos .- target.shape.position) ./ target.shape.radius
-
-        # Calc hit fraction per PMT
-        for (pmt_ix, pmt_pos) in enumerate(pmt_positions)
-    
-            pmt_grp = get_pom_pmt_group(pmt_ix)
-
-            pos_dir = hcat(calc_relative_pmt_coords(rel_pos, hit_dir, pmt_pos)...)
-            pos_dir_traf = predict(ppcas[pmt_grp], pos_dir')
-
-            i = clamp(searchsortedlast(bins_x, pos_dir_traf[1]), 1, length(bins_x)-1)
-            j = clamp(searchsortedlast(bins_y, pos_dir_traf[2]), 1, length(bins_y)-1)
-
-            prob_vec[pmt_ix] = acceptances[pmt_grp][i, j] .* wl_acceptance[hit_id]
-        end            
-        
-        no_hit = reduce(*, 1 .- prob_vec)
-        hit_prob = 1 - no_hit
-
-        if rand() < hit_prob
-            w = ProbabilityWeights(prob_vec)
-            pmt_hit_ids[hit_id] = sample(1:length(pmt_positions), w)
-        end
-    end
-
-    return pmt_hit_ids
-
-end
-=#
 
 function apply_wl_acceptance(
     hit_positions::AbstractVector,
