@@ -40,7 +40,13 @@ function main(parsed_args)
     g = 0.95f0
     target = POM(SA_F32[0, 0, 0], UInt16(1))
 
-    ptype = parsed_args[:mode] ==:lightsabre ? PMuPlus : PEPlus
+    if parsed_args[:mode] == :lightsabre
+        ptype = PMuPlus
+    elseif parsed_args[:mode] == :extended
+        ptype = PEPlus
+    else
+        ptype = PHadronShower
+    end
     plength = parsed_args[:mode] ==:lightsabre ? 1E4 : 0.
     lst = parsed_args[:mode] ==:lightsabre ? FastLightsabreMuonEmitter : ExtendedCherenkovEmitter
 
@@ -83,7 +89,7 @@ function main(parsed_args)
     end
 end
 
-mode_choices = ["extended", "lightsabre"]
+mode_choices = ["extended", "lightsabre", "hadronic"]
 
 s = ArgParseSettings()
 @add_arg_table s begin
