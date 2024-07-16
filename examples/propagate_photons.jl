@@ -8,7 +8,7 @@ buffer_cpu, buffer_gpu = make_hit_buffers();
 
 
 mean_sca_angle = 0.95f0
-medium = make_cascadia_medium_properties(mean_sca_angle, 1f0, 1.0f0)
+medium = CascadiaMediumProperties(mean_sca_angle, 1f0, 1.0f0)
 
 # We first define a `particle` and then convert into a light source
 energy = Float32(1E5)
@@ -30,7 +30,7 @@ module_id = 1
 target = POM(tpos, module_id)
 
 
-
+seed = 1
 setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 # Run photon propagation
 @time photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
