@@ -1,5 +1,6 @@
 module Processing
 
+using AbstractMediumProperties
 using DataFrames
 using Rotations
 using LinearAlgebra

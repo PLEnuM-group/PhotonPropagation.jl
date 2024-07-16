@@ -13,6 +13,7 @@ using PoissonRandom
 using Rotations
 using StructArrays
 using PhysicsTools
+using AbstractMediumProperties
 
 using LLVM.Interop
 

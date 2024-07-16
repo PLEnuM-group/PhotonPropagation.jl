@@ -6,6 +6,7 @@ export make_cherenkov_spectral_dist, make_biased_cherenkov_spectral_dist
 export make_cuda_spectral_dist
 export make_cherenkov_spectrum, make_biased_cherenkov_spectrum, make_monochromatic_spectrum
 
+using AbstractMediumProperties
 using Distributions
 using Adapt
 using Interpolations

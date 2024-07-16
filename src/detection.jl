@@ -166,7 +166,7 @@ A struct representing a spherical homogeneous detector.
 struct SphericalHomogeneousDetector{T} <: PhotonTarget{Spherical{T}}
     shape::Spherical{T}
     active_area::Float64
-    module_id::UInt16
+    module_id::Int32
 end
 
 StructTypes.StructType(::Type{<:SphericalHomogeneousDetector}) = StructTypes.Struct()

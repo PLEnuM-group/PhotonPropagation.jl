@@ -28,7 +28,7 @@ using PhysicsTools
 using StructTypes
 using StatsBase
 using Polynomials
-
+using AbstractMediumProperties
 using ..Spectral
 using ..Medium
 
