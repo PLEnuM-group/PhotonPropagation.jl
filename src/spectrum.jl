@@ -32,24 +32,27 @@ StructTypes.StructType(::Type{<:InterpolatedSpectralDist}) = StructTypes.Struct(
 
 Adapt.@adapt_structure InterpolatedSpectralDist
 
-Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist) = d.interpolated_cdf(rand(rng))
+Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist{<:A, T}) where {A, T} = d.interpolated_cdf(rand(rng, T))
 Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist{<:CuTexture}) = @inbounds d.interpolated_cdf[rand(rng)]
 Base.rand(rng::AbstractRNG, d::InterpolatedSpectralDist{<:CuDeviceTexture}) = @inbounds d.interpolated_cdf[rand(rng)]
 
 
 
 function make_spectral_dist(spect_func, wl_range::Tuple{T, T}, step_size::T=T(1)) where {T <: Real}
-    wl_steps = wl_range[1]:step_size:wl_range[2]
+    wl_steps = collect(wl_range[1]:step_size:wl_range[2])
 
     norms = Vector{T}(undef, size(wl_steps, 1))
     norms[1] = 0
 
-    full_norm = integrate_gauss_quad(spect_func, wl_range[1], wl_range[2], 25)
+    full_norm = T(integrate_gauss_quad(spect_func, wl_range[1], wl_range[2], 25))
 
     for i in eachindex(wl_steps)[2:end]
         step = wl_steps[i]
         norms[i] = integrate_gauss_quad(spect_func, wl_range[1], step, 25) / full_norm
     end
+
+    push!(wl_steps, wl_range[2]+step_size)
+    push!(norms, T(1))
 
     sorting = sortperm(norms)
     return InterpolatedSpectralDist(linear_interpolation(norms[sorting], wl_steps[sorting], extrapolation_bc=zero(T)), full_norm)
