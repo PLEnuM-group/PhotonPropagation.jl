@@ -35,11 +35,14 @@ function plot_medium(medium)
     return plot_medium(medium, fig, [ax1, ax2, ax3, ax4])
 end
 
-3.1f0^1.2f0
-
-medium = KM3NeTMedium(1., 1.)
+medium = KM3NeTMediumArca(1., 1., 0.17)
 
 
+
+fig, axes = plot_medium(medium)
+medium2 = CascadiaMediumProperties(0.95, 1., 1.)
+plot_medium(medium2, fig, axes)
+fig
 
 
 cos_thetas = [scattering_function(medium) for _ in 1:1000000]
@@ -67,10 +70,9 @@ fig
 
 
 
-fig, axes = plot_medium(medium)
-medium2 = CascadiaMediumProperties(0.95, 1., 1.)
-plot_medium(medium2, fig, axes)
-fig
+
+
+
 
 wavelengths = 350:1.:700
 

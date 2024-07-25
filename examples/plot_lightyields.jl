@@ -7,8 +7,341 @@ using PhysicsTools
 using Random
 using StatsBase
 using Polynomials
+using KM3NeTMediumProperties
+using Format
+using AbstractMediumProperties
+using LinearAlgebra
+using Unitful
+using PhysicalConstants.CODATA2018
+
+function plot_cherenkov_spectrum(wl_min, wl_max, medium)
+    wavelength = wl_min:1.:wl_max
+    norm = frank_tamm_norm((wl_min, wl_max), wl -> phase_refractive_index(wl, medium))
+    fig = Figure()
+    ax = Axis(fig[1, 1], title=format("Cherenkov Spectrum. Norm: {:.2f} /cm", norm/100), xlabel="Wavelength (nm)", ylabel="Photons / m^2")
+    lines!(ax, wavelength, frank_tamm.(wavelength, phase_refractive_index.(wavelength, Ref(medium))))
+    return fig
+end
 
 
+function plot_track_length(log_e_min, log_e_max; ptype=PEMinus)
+
+    reference_data = [
+        1.0064783277286045 524.734426888343
+        3.0025645204983777 1583.9810802614982
+        6.89300086758925 3689.39155822141
+        10.073938191981963 5232.552377993151
+        30.326632452208113 15617.705540146851
+        68.99270732841501 36789.91425395293
+        99.92285988927631 52178.60037754378
+        292.7533809658026 155743.71053119222
+        696.8307741465146 366857.99337362836
+        1000.1197535338733 526221.2982091925
+        2930.092728152024 1588504.625396774
+        6911.70496158875 3699804.68230323
+        9742.244333967774 5247553.723195897
+    ]
+
+
+    energies = 10 .^(log_e_min:0.1:log_e_max)
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1],
+        title="Additional track length",
+        xlabel="Energy (GeV)",
+        ylabel="Additional track length (cm)",
+        yscale=log10,
+        xscale=log10,)
+    lines!(ax, energies, cascade_cherenkov_track_length.(energies, ptype))
+    scatter!(ax, reference_data[:, 1], reference_data[:, 2] ./ 100, label="Reference Data")
+    axislegend()
+    return fig
+end
+
+function plot_total_lightyield(log_e_min, log_e_max, wl_min, wl_max, medium; ptype=PEMinus)
+    energies = 10 .^(log_e_min:0.1:log_e_max)
+    spectrum = make_cherenkov_spectrum((wl_min, wl_max), medium)
+    fig = Figure()
+    ax = Axis(
+        fig[1, 1],
+        title="Total light yield",
+        xlabel="Energy (GeV)",
+        ylabel="Total light yield (photons)",
+        yscale=log10,
+        xscale=log10,)
+    lines!(ax, energies, total_lightyield.(Ref(Cascade()), energies, Ref(ptype), Ref(spectrum)))
+
+    norm = frank_tamm_norm((wl_min, wl_max), wl -> phase_refractive_index(wl, medium))
+    lines!(ax, energies, cascade_cherenkov_track_length.(energies, ptype) .* norm, label="Cherenkov track length")
+
+    #=
+    ps = Particle.(Ref(SA[0., 0., 0.]), Ref(SA[0., 0., 1.]), 0., energies, 0., ptype)
+    ems = ExtendedCherenkovEmitter.(ps, Ref(medium), Ref(spectrum))
+    nphs = [em.photons for em in ems]
+    scatter!(ax, energies, nphs, label="Photons emitted")
+    =#
+
+    jpp_const = 4.7319
+    lines!(ax, energies, jpp_const .* energies .* norm, label="JPP constant")
+    axislegend(position=:lt)
+
+    return fig
+end
+
+
+function plot_generated_photon_properties(medium, wl_min, wl_max; ptype=PEMinus)
+    spectrum = make_cherenkov_spectrum((wl_min, wl_max), medium)
+
+    energy = 1E5
+    cascade_dir = [1., 0., 0.]
+    p = Particle(SA[0., 0., 0.], cascade_dir, 0., energy, 0., ptype)
+    #emitter = ExtendedCherenkovEmitterCustomSmear(p, medium, spectrum, cherenkov_beta_a=1.1, cherenkov_beta_b=0.07)
+
+    emitter = ExtendedCherenkovEmitter(p, medium, spectrum)
+
+    photons = [PhotonPropagationCuda.initialize_photon_state(emitter, medium, spectrum.spectral_dist) for _ in 1:100000]
+
+    fig = Figure(size=(800, 800))
+    ax = Axis(
+        fig[1, 1],
+        title="Emitted Spectrum",
+        xlabel="Wavelength (nm)",
+        ylabel="Photons",
+        yscale=log10,
+        )
+
+    wl_bins = wl_min:10:wl_max
+    hist!(ax, [p.wavelength for p in photons], bins=wl_bins)
+
+    norms = frank_tamm_norm.([(wl_bins[i], wl_bins[i+1]) for i in 1:(length(wl_bins)-1)], wl -> phase_refractive_index(wl, medium))
+    total_norm = frank_tamm_norm((wl_min, wl_max), wl -> phase_refractive_index(wl, medium))
+    tlen = cascade_cherenkov_track_length.(energy, ptype)
+    println(emitter.photons ./ (total_norm * tlen))
+    centers = (wl_bins[1:end-1] .+ wl_bins[2:end]) ./ 2
+    scatter!(ax, centers, norms ./ total_norm .* length(photons), color=:red, label="Expected")
+    
+    ax2 = Axis(fig[1, 2], title="Angle to cascade direction", xlabel="cos(theta)", ylabel="PDF")
+
+    hist!(ax2, [dot(p.direction, cascade_dir) for p in photons], bins=100, normalization=:pdf)
+    vlines!(ax2, cherenkov_angle(400., medium))
+
+    ax3 = Axis(fig[2, 1], title="Phi Angle", xlabel="phi", ylabel="PDF")
+    hist!(ax3, [cart_to_sph(p.direction)[2] for p in photons], normalization=:pdf)
+
+    ax4 = Axis(fig[2, 2], title="Position along shower", xlabel="z (m)", ylabel="PDF")
+    hist!(ax4, [p.position[1] for p in photons], normalization=:pdf)
+
+    return fig
+end
+
+
+function plot_angles_after_scatter(medium, wl_min, wl_max; ptype=PEPlus)
+
+    spectrum = make_cherenkov_spectrum((wl_min, wl_max), medium)
+
+    energy = 1E5
+    cascade_dir = [1., 0., 0.]
+    p = Particle(SA[0., 0., 0.], cascade_dir, 0., energy, 0., ptype)
+    emitter = ExtendedCherenkovEmitter(p, medium, spectrum)
+    photons = [PhotonPropagationCuda.initialize_photon_state(emitter, medium, spectrum.spectral_dist) for _ in 1:10000]
+    new_directions = [PhotonPropagationCuda.update_direction(ph.direction, medium) for ph in photons]
+    fig = Figure()
+    ax = Axis(fig[1, 1], title="Angle to cascade direction", xlabel="cos(theta)", ylabel="PDF")
+
+    hist!(ax, [dot(nd, cascade_dir) for nd in new_directions], normalization=:pdf)
+    vlines!(ax, cherenkov_angle(400., medium))
+
+    return fig
+end
+
+function propagate_step(photon, sca_len, c_grp)
+    eta = rand()
+    step_len = -log(eta) * sca_len
+    new_dir = PhotonPropagationCuda.update_direction(photon.direction, medium)
+    new_time = photon.time + step_len / c_grp
+
+    new_photon = PhotonPropagationCuda.PhotonState(photon.position .+ step_len .* photon.direction, new_dir, new_time, photon.wavelength)
+    return new_photon, step_len
+end
+
+struct PhotonHistory
+    positions::Vector{SVector{3, Float64}}
+    directions::Vector{SVector{3, Float64}}
+    weights::Vector{Float64}
+end
+
+
+function trace_photon_paths(medium, wl_min, wl_max, n_photons, steps; ptype=PEPlus)
+
+    spectrum = make_cherenkov_spectrum((wl_min, wl_max), medium)
+
+    energy = 1E5
+    cascade_dir = [1., 0., 0.]
+    p = Particle(SA[0., 0., 0.], cascade_dir, 0., energy, 0., ptype)
+    emitter = ExtendedCherenkovEmitter(p, medium, spectrum)
+    photons = [PhotonPropagationCuda.initialize_photon_state(emitter, medium, spectrum.spectral_dist) for _ in 1:n_photons]
+
+    photon_histories = PhotonHistory[]
+    for photon in photons
+        push!(photon_histories, PhotonHistory([photon.position], [photon.direction], [1.]))
+    end
+
+    for step in 1:steps
+        for (ph_ix, photon_hist) in zip(eachindex(photons), photon_histories)
+            photon = photons[ph_ix]
+            new_photon, step_len = propagate_step(photon, scattering_length(photon.wavelength, medium), group_velocity(photon.wavelength, medium))
+            push!(photon_hist.positions, new_photon.position)
+            push!(photon_hist.directions, new_photon.direction)
+
+            new_weight = photon_hist.weights[end] * exp(-step_len / absorption_length(photon.wavelength, medium))
+            push!(photon_hist.weights, new_weight)
+
+            photons[ph_ix] = new_photon
+        end
+    end
+    return photon_histories
+end
+
+
+function plot_photon_history(photon_histories; bounds=(-50, 50))
+
+    paths = Observable[]
+    paths2 = Observable[]
+    weights = Observable[]
+    
+    for phist in photon_histories
+        p0 = phist.positions[1]
+        p0_obs = Observable(Point2f[(p0[1], p0[2])])
+        push!(paths, p0_obs)
+        p0_obs = Observable(Point2f[(p0[1], p0[3])])
+        push!(paths2, p0_obs)
+        weight = Observable([log10(phist.weights[1])])
+        push!(weights, weight)
+    end
+
+
+    fig = Figure(size=(1000, 500))
+    ax = Axis(fig[1, 1], xlabel="x(m)", ylabel="y(m)")
+    xlims!(ax, bounds...)
+    ylims!(ax, bounds...)
+
+    ax2 = Axis(fig[1, 2], xlabel="x(m)", ylabel="z(m)")
+    xlims!(ax2, bounds...)
+    ylims!(ax2, bounds...)
+
+    for (path, weight) in zip(paths, weights)
+        lines!(ax, path, color=weight, colorrange=(-10, 0))
+    end
+
+    for (path, weight) in zip(paths2, weights)
+        lines!(ax2, path, color=weight, colorrange=(-10, 0))
+    end
+
+    framerate = 3
+    timestamps = 2:length(photon_histories[1].positions)
+
+
+    record(fig, "time_animation.mp4", timestamps;
+            framerate = framerate) do t
+        for (pix, phist) in enumerate(photon_histories)
+            path = paths[pix]
+            path2 = paths2[pix]
+            weight = weights[pix]
+            p = phist.positions[t]
+            push!(weight.val, log10(phist.weights[t]))
+            push!(path.val, Point2f(p[1], p[2]))
+            push!(path2.val, Point2f(p[1], p[3]))
+
+            notify(path)
+            notify(path2)
+            notify(weight)
+            
+        end
+    end
+    
+    return fig
+end
+
+medium = KM3NeTMediumArca(1., 1., 0.17)
+
+function lambda_to_energy(lambda)
+    return ustrip(u"eV", SpeedOfLightInVacuum / (lambda*1u"nm") * PlanckConstant)
+end
+
+function energy_to_lambda(E)
+    return ustrip(u"nm",  SpeedOfLightInVacuum * PlanckConstant / (E*1u"eV"))
+end
+
+
+function sample_cherenkov_e_geant(wl_min, wl_max, medium)
+
+    Pmin = lambda_to_energy(wl_max)
+    Pmax = lambda_to_energy(wl_min)
+    dp = Pmax - Pmin
+
+    eta = rand()
+    sampledEnergy = Pmin + eta * dp
+    ref_ix = phase_refractive_index(energy_to_lambda(sampledEnergy), medium)
+    nMax = phase_refractive_index(wl_min, medium)
+    maxCos = 1 / nMax
+    BetaInverse = 1
+    maxSin2 = (1.0 - maxCos) * (1.0 + maxCos)
+    sampled_lambda = 0.
+    while true
+        eta = rand()
+        sampledEnergy = Pmin + eta * dp
+        sampled_lambda = energy_to_lambda(sampledEnergy)
+        ref_ix = phase_refractive_index(sampled_lambda, medium)
+        cosTheta = BetaInverse / ref_ix;
+        sin2Theta = (1.0 - cosTheta) * (1.0 + cosTheta);
+
+        eta = rand()
+
+        if eta * maxSin2 < sin2Theta
+            break
+        end
+
+    end
+    return sampled_lambda
+end
+
+function plot_cherenkov_spectrum_compare_geant(wl_min, wl_max, medium)
+    wavelength = wl_min:1.:wl_max
+    norm = frank_tamm_norm((wl_min, wl_max), wl -> phase_refractive_index(wl, medium))
+    fig = Figure()
+    ax = Axis(fig[1, 1], title=format("Cherenkov Spectrum. Norm: {:.2f} /cm", norm/100), xlabel="Wavelength (nm)", ylabel="PDF")
+    
+
+    lambdas = [sample_cherenkov_e_geant(wl_min, wl_max, medium) for _ in 1:10000]
+    hist!(ax, lambdas, normalization=:pdf, label="Geant4")
+    lines!(ax, wavelength, frank_tamm.(wavelength, phase_refractive_index.(wavelength, Ref(medium))) ./ norm *1E9, label="Frank-Tamm", color=Makie.wong_colors()[2])
+    axislegend()
+    return fig
+end
+
+
+
+
+
+#plot_cherenkov_spectrum_compare_geant(300., 800., medium)
+
+sph_to_cart(2*π+0.1, 0)
+sph_to_cart(2*π-0.1, 0)
+
+
+histories = trace_photon_paths(medium, 300., 800., 50, 30)
+plot_photon_history(histories, bounds=(-200, 200))
+
+plot_cherenkov_spectrum(300., 500., medium)
+plot_track_length(1., 7.)
+plot_total_lightyield(1, 7., 300., 800., medium)
+plot_generated_photon_properties(medium, 300., 800.)
+
+plot_angles_after_scatter(medium, 300., 800.)
+
+cascade_cherenkov_track_length.(1E4, PEMinus) / 1E4
+
+histories[1].positions
 
 log_energies = 2:0.1:10
 zs = (0:0.1:20.0)# m
@@ -21,6 +354,8 @@ fig, ax, _ = hist(cos_thetas, axis=(xlabel="cos(theta)", ylabel="PDF", yscale=lo
 vlines!(ax, mean(cos_thetas), color=:black, linewidth=3, linestyle=:dash)
 fig
 
+
+sample_cherenkov_track_direction(Float64)
 
 water_abs = DataFrame(CSV.File(joinpath(@__DIR__, "../assets/water_absorption_wiki.csv");
     header=[:x, :y], delim=";", decimal=',', type=Float64))
