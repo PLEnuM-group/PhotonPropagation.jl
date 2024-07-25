@@ -10,7 +10,7 @@ export total_lightyield
 export rel_additional_track_length
 
 export AngularEmissionProfile
-export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, CherenkovEmitter, PointlikeCherenkovEmitter
+export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, ExtendedCherenkovEmitterNoSmear, ExtendedCherenkovEmitterCustomSmear, CherenkovEmitter, PointlikeCherenkovEmitter
 export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, CollimatedIsotropicEmitter
 export FastLightsabreMuonEmitter
 export cherenkov_ang_dist, cherenkov_ang_dist_int
@@ -414,11 +414,16 @@ function total_lightyield(::Track, particle::Particle, medium, spectrum)
     return total_lightyield(Track(), particle.energy, particle.length, medium, spectrum)
 end
 
-function total_lightyield(::Cascade, particle, medium, spectrum)
+function total_lightyield(::Cascade, energy::Real, ptype, spectrum)
     total_contrib = (spectrum.spectral_dist.normalization *
-        cascade_cherenkov_track_length(particle.energy, particle.type)
+        cascade_cherenkov_track_length(energy, ptype)
     )
     return total_contrib
+end
+
+
+function total_lightyield(::Cascade, particle::Particle, medium::MediumProperties, spectrum)
+    return total_lightyield(Cascade(), particle.energy, particle.type, spectrum) 
 end
 
 
@@ -646,6 +651,127 @@ function ExtendedCherenkovEmitter(
 
     ExtendedCherenkovEmitter(particle.position, particle.direction, particle.time, photons, long_param)
 end
+
+
+
+"""
+    struct ExtendedCherenkovEmitterNoSmear{T} <: CherenkovEmitter{T}
+
+A struct representing an extended cascade emitter where all photons are emitted at Cherenkov angle.
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in three-dimensional space.
+- `direction::SVector{3,T}`: The direction of the cascade axis.
+- `time::T`: The vertex time of the cascades.
+- `photons::Int64`: The number of photons emitted.
+- `long_param::LongitudinalParameterisation{T}`: The longitudinal parameterisation of the emitter.
+
+"""
+struct ExtendedCherenkovEmitterNoSmear{T} <: CherenkovEmitter{T}
+    position::SVector{3,T}
+    direction::SVector{3,T}
+    time::T
+    photons::Int64
+    long_param::LongitudinalParameterisation{T}
+end
+
+StructTypes.StructType(::Type{<:ExtendedCherenkovEmitterNoSmear}) = StructTypes.Struct()
+
+
+"""
+    ExtendedCherenkovEmitterNoSmear(particle::Particle, medium::MediumProperties, spectrum::Spectrum; oversample=1.0)
+
+Constructs an ExtendedCherenkovEmitterNoSmear object that represents the emission of Cherenkov photons by a cascade in a medium.
+All photons emitted at Cherenkov angle.
+
+# Arguments
+- `particle::Particle`: The particle emitting the Cherenkov photons.
+- `medium::MediumProperties`: The properties of the medium.
+- `spectrum::Spectrum`: The spectrum of the emitted photons.
+- `oversample::Float64`: The oversampling factor for the number of emitted photons (default: 1.0).
+
+# Returns
+- An `ExtendedCherenkovEmitterNoSmear` object representing the emission of Cherenkov photons.
+
+"""
+function ExtendedCherenkovEmitterNoSmear(
+    particle::Particle,
+    medium::MediumProperties,
+    spectrum::Spectrum;
+    oversample=1.0
+) 
+
+    long_param = LongitudinalParameterisation(particle.energy, medium, particle.type)
+    photons = pois_rand(total_lightyield(particle, medium, spectrum) * oversample)
+
+    ExtendedCherenkovEmitterNoSmear(particle.position, particle.direction, particle.time, photons, long_param)
+end
+
+"""
+    struct ExtendedCherenkovEmitterMoreSmear{T} <: CherenkovEmitter{T}
+
+A struct representing an extended cascade emitter with additional jitter on the photon emission angle
+
+# Fields
+- `position::SVector{3,T}`: The position of the emitter in three-dimensional space.
+- `direction::SVector{3,T}`: The direction of the cascade axis.
+- `time::T`: The vertex time of the cascades.
+- `photons::Int64`: The number of photons emitted.
+- `cherenkov_beta_a`: "a" parameter of the Beta distribution used to sample Cherenkov track angles.
+- `cherenkov_beta_b`: "b" parameter of the Beta distribution used to sample Cherenkov track angles.
+- `long_param::LongitudinalParameterisation{T}`: The longitudinal parameterisation of the emitter.
+
+"""
+struct ExtendedCherenkovEmitterCustomSmear{T} <: CherenkovEmitter{T}
+    position::SVector{3,T}
+    direction::SVector{3,T}
+    time::T
+    photons::Int64
+    cherenkov_beta_a::T
+    cherenkov_beta_b::T
+    long_param::LongitudinalParameterisation{T}
+end
+
+StructTypes.StructType(::Type{<:ExtendedCherenkovEmitterCustomSmear}) = StructTypes.Struct()
+
+
+"""
+    ExtendedCherenkovEmitterCustomSmear(particle::Particle, medium::MediumProperties, spectrum::Spectrum; oversample=1.0)
+
+Constructs an ExtendedCherenkovEmitterCustomSmear object that represents the emission of Cherenkov photons by a cascade in a medium.
+All photons emitted at Cherenkov angle.
+
+# Arguments
+- `particle::Particle`: The particle emitting the Cherenkov photons.
+- `medium::MediumProperties`: The properties of the medium.
+- `spectrum::Spectrum`: The spectrum of the emitted photons.
+- `cherenkov_beta_a`: "a" parameter of the Beta distribution used to sample Cherenkov track angles.
+- `cherenkov_beta_b`: "b" parameter of the Beta distribution used to sample Cherenkov track angles.
+- `oversample::Float64`: The oversampling factor for the number of emitted photons (default: 1.0).
+
+# Returns
+- An `ExtendedCherenkovEmitterCustomSmear` object representing the emission of Cherenkov photons.
+
+"""
+function ExtendedCherenkovEmitterCustomSmear(
+    particle::Particle{T},
+    medium::MediumProperties,
+    spectrum::Spectrum;
+    cherenkov_beta_a=1.776,
+    cherenkov_beta_b=0.164,
+    oversample=1.0
+) where {T<:Real}
+
+    long_param = LongitudinalParameterisation(particle.energy, medium, particle.type)
+    photons = pois_rand(total_lightyield(particle, medium, spectrum) * oversample)
+
+    ExtendedCherenkovEmitterCustomSmear(particle.position, particle.direction, particle.time, photons, T(cherenkov_beta_a), T(cherenkov_beta_b), long_param)
+end
+
+
+
+
+
 
 struct PointlikeCherenkovEmitter{T} <: CherenkovEmitter{T}
     position::SVector{3,T}

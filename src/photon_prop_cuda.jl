@@ -95,6 +95,63 @@ function sample_cherenkov_direction(source::CherenkovEmitter{T}, medium::MediumP
     return ph_dir
 end
 
+function sample_cherenkov_direction_no_smear(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
+
+    # Sample a photon direction. Assumes track is aligned with e_z
+    theta_cherenkov = cherenkov_angle(wl, medium)
+    phi = uniform(T(0), T(2 * pi))
+    ph_dir = sph_to_cart(theta_cherenkov, phi)
+
+    # Rotate photon to source direction
+    ph_dir = rot_from_ez_fast(source.direction, ph_dir)
+
+    return ph_dir
+end
+
+function sample_cherenkov_direction_more_smear(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
+
+    # Sample a photon direction. Assumes track is aligned with e_z
+    jitter::T = randn(T) * source.extra_jitter
+    theta_cherenkov::T = cherenkov_angle(wl, medium) + jitter
+    phi = uniform(T(0), T(2 * pi))
+    ph_dir = sph_to_cart(theta_cherenkov, phi)
+
+
+    # Sample a direction of a "Cherenkov track". Assumes source direction is e_z
+    track_dir::SVector{3,T} = sample_cherenkov_track_direction(T)
+
+    # Rotate photon to track direction
+    ph_dir = rot_from_ez_fast(track_dir, ph_dir)
+
+    # Rotate track to source direction
+    ph_dir = rot_from_ez_fast(source.direction, ph_dir)
+
+    return ph_dir
+end
+
+function sample_cherenkov_direction_custom_smear(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
+
+    # Sample a photon direction. Assumes track is aligned with e_z
+    theta_cherenkov::T = cherenkov_angle(wl, medium) 
+    phi = uniform(T(0), T(2 * pi))
+    ph_dir = sph_to_cart(theta_cherenkov, phi)
+
+
+    # Sample a direction of a "Cherenkov track". Assumes source direction is e_z
+    track_cos_theta = rand_beta(source.cherenkov_beta_a, source.cherenkov_beta_b) *2 -1
+    track_phi = uniform(T(0), T(2 * pi))
+    track_dir::SVector{3,T} = sph_to_cart(acos(track_cos_theta), track_phi)
+
+    # Rotate photon to track direction
+    ph_dir = rot_from_ez_fast(track_dir, ph_dir)
+
+    # Rotate track to source direction
+    ph_dir = rot_from_ez_fast(source.direction, ph_dir)
+
+    return ph_dir
+end
+
+
 
 function initialize_photon_state(source::PointlikeIsotropicEmitter{T}, ::MediumProperties, spectrum::SpectralDist) where {T<:Real}
     wl = rand(spectrum)
@@ -161,6 +218,36 @@ function initialize_photon_state(source::ExtendedCherenkovEmitter{T}, medium::Me
 
     PhotonState(pos, ph_dir, time, wl)
 end
+
+
+function initialize_photon_state(source::ExtendedCherenkovEmitterNoSmear{T}, medium::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
+
+    long_pos = rand_gamma(T(source.long_param.a), T(1 / source.long_param.b), Float32) * source.long_param.lrad
+
+    pos::SVector{3,T} = source.position .+ long_pos .* source.direction
+    time = source.time + long_pos / T(c_vac_m_ns)
+
+    ph_dir = sample_cherenkov_direction_no_smear(source, medium, wl)
+
+    PhotonState(pos, ph_dir, time, wl)
+end
+
+function initialize_photon_state(source::ExtendedCherenkovEmitterCustomSmear{T}, medium::MediumProperties, spectrum::SpectralDist) where {T<:Real}
+    wl = rand(spectrum)
+
+
+    long_pos = rand_gamma(T(source.long_param.a), T(1 / source.long_param.b), Float32) * source.long_param.lrad
+
+    pos::SVector{3,T} = source.position .+ long_pos .* source.direction
+    time = source.time + long_pos / T(c_vac_m_ns)
+
+    ph_dir = sample_cherenkov_direction_custom_smear(source, medium, wl)
+
+    PhotonState(pos, ph_dir, time, wl)
+end
+
+
 
 function initialize_photon_state(source::PointlikeCherenkovEmitter{T}, medium::MediumProperties, spectrum::SpectralDist) where {T<:Real}
     wl = rand(spectrum)
@@ -347,6 +434,7 @@ struct PhotonHit{T<:Real,U<:Real}
     time::U
     dist_travelled::T
     module_id::Int64
+    n_steps::Int16
 end
 
 
@@ -458,6 +546,7 @@ function cuda_propagate_photons!(
             out_hits.wavelength[stack_idx] = wavelength
             out_hits.dist_travelled[stack_idx] = dist_travelled
             out_hits.module_id[stack_idx] = module_ix
+            out_hits.n_steps[stack_idx] = nstep
             break
        
         end
@@ -469,9 +558,7 @@ function cuda_propagate_photons!(
     CUDA.atomic_add!(pointer(out_n_ph_simulated, 1), n_photons_simulated)
     CUDA.atomic_or!(pointer(out_err_code, 1), err_code)
     
-    
     return nothing
-
 end
 
 #=
