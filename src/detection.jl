@@ -18,6 +18,7 @@ export check_pmt_hit
 export get_pmt_positions
 export apply_wl_acceptance
 export DummyTarget, DummyShape
+export cross_section
 
 """
     TargetShape
@@ -30,7 +31,7 @@ surface_area(::TargetShape)
     Return the surface area of the target shape.
 """
 surface_area(::TargetShape) = error("Not implemented")
-
+cross_section(::TargetShape, direction) = error("Not implemented")
 
 """
     DummyShape{T <: Real} <: TargetShape
@@ -60,6 +61,7 @@ struct Spherical{T <: Real} <: TargetShape
 end
 
 surface_area(s::Spherical) = 4*π*s.radius^2
+cross_section(s::Spherical, direction) = π*s.radius^2
 
 StructTypes.StructType(::Type{<:Spherical}) = StructTypes.Struct()
 
@@ -290,12 +292,39 @@ end
 
 function check_pmt_hit(
     hit_positions::AbstractVector{T},
-    ::AbstractVector,
+    hit_directions::AbstractVector,
     hit_wavelengths::AbstractVector,
     target::SphericalMultiPMTDetector,
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
 
+    # For POM, xsec is always the same (spherical module)
+    xsec = cross_section(target, first(hit_directions))
 
+    total_hit_prob = get_pmt_count(target) * target.acceptance.pmt_eff_area / xsec
+
+    pmt_positions = get_pmt_positions(target, orientation)
+    pmt_hit_ids = zeros(Int, length(hit_positions))
+    rel_pmt_weights = zeros(Float64, get_pmt_count(target))
+
+    for (hit_ix, hd) in enumerate(hit_directions)
+        if rand() > total_hit_prob
+            continue
+        end
+
+        for (pmt_ix, pmt_pos) in enumerate(pmt_positions)
+            rel_costheta = -dot(hd, pmt_pos) 
+            rel_pmt_weights[pmt_ix] = rel_costheta
+        end
+
+        w = ProbabilityWeights(rel_pmt_weights)
+        pmt_hit_ids[hit_ix] = sample(1:get_pmt_count(target), w)
+
+
+    end
+
+
+
+    #=
     wl_acc = target.wl_acceptance.(hit_wavelengths)
     
     hits = rand(length(hit_positions)) .< wl_acc
@@ -313,6 +342,7 @@ function check_pmt_hit(
     pmt_hit_ids[hits] .= check_pmt_hit_opening_angle.(rel_pos, Ref(pmt_positions), Ref(opening_angle))
 
     return pmt_hit_ids
+    =#
 
 end
 
@@ -326,6 +356,11 @@ apply_wl_acceptance(
 apply_qe(::AbstractVector, t::PhotonTarget) = error("not implemented for type $(typeof(t))")
     
 abstract type PMTAcceptance end
+
+
+struct SimpleAcceptance{T<:Real} <: PMTAcceptance
+    pmt_eff_area::T
+end
 
 include("pom.jl")
 include("dom.jl")
