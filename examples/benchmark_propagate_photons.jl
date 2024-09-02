@@ -6,7 +6,7 @@ using CUDA
 using Dates
 
 distance = 40.0f0
-medium = make_cascadia_medium_properties(0.99f0)
+medium = CascadiaMediumProperties()
 n_pmts = 16
 pmt_area = Float64((75e-3 / 2)^2 * π)
 target_radius = 0.21f0
