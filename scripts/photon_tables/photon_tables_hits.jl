@@ -114,5 +114,3 @@ if isfile(parsed_args["outfile"])
 end
 
 resample_dataset(parsed_args["infile"], parsed_args["outfile"], parsed_args["resample"])
-
-

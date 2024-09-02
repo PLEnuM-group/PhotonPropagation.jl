@@ -10,6 +10,7 @@ using Sobol
 using ArgParse
 using PhysicsTools
 using JSON3
+using AbstractMediumProperties
 import Base.GC.gc
 using LinearAlgebra
 include("utils.jl")

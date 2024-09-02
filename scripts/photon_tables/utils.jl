@@ -60,7 +60,7 @@ function make_setup(
     mode, pos, dir, energy, seed;
     g=0.99f0, abs_scale=1f0, sca_scale=1f0)
 
-    medium = make_cascadia_medium_properties(g, abs_scale, sca_scale)
+    medium = CascadiaMediumProperties(g, abs_scale, sca_scale)
     target = POM(SA_F32[0, 0, 0], UInt16(1))
     wl_range = (300.0f0, 800.0f0)
 
