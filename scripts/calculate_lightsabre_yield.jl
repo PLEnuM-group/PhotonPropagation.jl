@@ -6,19 +6,21 @@ using CurveFit
 using StaticArrays
 using PhysicsTools
 using DataFrames
-medium = make_cascadia_medium_properties(0.95)
+
+medium = CascadiaMediumProperties()
 wl_range = (300., 800.)
 spectrum = make_cherenkov_spectrum(wl_range, medium)
 
 
 data = []
-log_energies = 1.:0.5:7
+log_energies = 1.:0.5:8.5
 lys = Float64[]
 tlen = 10000.
+prop = ProposalInterface.make_propagator(PMuMinus)
 for le in log_energies
     particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 10^le, tlen, PMuMinus)
-    for i in 1:10
-        p, secondaries = propagate_muon(particle)
+    for i in 1:20
+        p, secondaries = propagate_muon(particle, propagator=prop)
         if length(secondaries) > 0
             ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(spectrum)))
         else
