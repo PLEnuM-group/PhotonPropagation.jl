@@ -434,7 +434,7 @@ struct PhotonHit{T<:Real,U<:Real}
     time::U
     dist_travelled::T
     module_id::Int64
-    n_steps::Int16
+    n_steps::Int32
 end
 
 
@@ -550,6 +550,11 @@ function cuda_propagate_photons!(
             break
        
         end
+
+
+
+
+        
         
         n_photons_simulated = ifelse(err_code == 0, n_photons_simulated += 1, n_photons_simulated)
 
