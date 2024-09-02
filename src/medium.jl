@@ -2,7 +2,7 @@ module Medium
 using Unitful
 using Base: @kwdef
 using PhysicalConstants.CODATA2018
-using Parquet
+using Parquet2
 using DataFrames
 using StructTypes
 using PhysicsTools
