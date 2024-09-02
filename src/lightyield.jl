@@ -849,13 +849,13 @@ end
 function FastLightsabreMuonEmitter(particle::Particle, medium::MediumProperties, spectrum::Spectrum) 
 
     # TODO: Check that medium and spectrum actually match the polynomial it was generated for.
-    coeffs = [0.08579130312815847
-            1.584750063826708
-            0.07339608562414644
-            -0.0887212430029659
-            0.016106184682215623
-            -0.0008970618164771176]
-    max_energy = 1E7
+    coeffs = [1.489564771226754
+    -1.5506443227373399
+     1.437372966708668
+    -0.32723025226136027
+     0.03308369739484983
+    -0.0012413086001854708]
+    max_energy = 1E8
     min_energy = 1E1
 
     if particle.energy > max_energy || particle.energy < min_energy
