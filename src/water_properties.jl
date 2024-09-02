@@ -27,7 +27,7 @@ struct AbsLengthStrawFromFit
 end
 
 const ABSLENGTHSTRAWFIT = AbsLengthStrawFromFit(
-    DataFrame(read_parquet(joinpath(pkgdir(@__MODULE__), "assets/attenuation_length_straw_fit.parquet"))))
+    DataFrame(Parquet2.Dataset(joinpath(pkgdir(@__MODULE__), "assets/attenuation_length_straw_fit.parquet"))))
 
 function (f::AbsLengthStrawFromFit)(wavelength::Real)
     T = typeof(wavelength)
@@ -44,6 +44,9 @@ struct CascadiaMediumProperties{T<:Real} <: WaterProperties{T}
     abs_scale::T
     sca_scale::T
 end
+
+
+CascadiaMediumProperties() = CascadiaMediumProperties(0.92f0, 1f0, 1f0)
 
 const CASCADIA_SALINITY = 34.82 # permille
 const CASCADIA_TEMPERATURE = 1.8 # °C
