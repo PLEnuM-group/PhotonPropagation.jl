@@ -16,6 +16,9 @@ using LinearAlgebra
 using JSON3
 using Healpix
 using StatsBase
+using FHist
+using Polynomials
+
 
 function calc_coordinates!(df)
     pos_in = Matrix{Float64}(df[:, ["in_x", "in_y", "in_z"]])
@@ -34,6 +37,13 @@ function calc_coordinates!(df)
     df[!, :in_p_norm_x] .= in_p_cart_norm[:, 1]
     df[!, :in_p_norm_y] .= in_p_cart_norm[:, 2]
     df[!, :in_p_norm_z] .= in_p_cart_norm[:, 3]
+
+
+    in_p_sph = reduce(hcat, cart_to_sph.(eachrow(in_p_cart_norm)))
+
+    df[!, :in_p_theta] .= in_p_sph[1, :]
+    df[!, :in_p_phi] .= in_p_sph[2, :]
+
    return df
 end
 
@@ -64,14 +74,16 @@ function calc_pmt_coords()
 
     R = calc_rot_matrix(SA[0.0, 1.0, 0.0], SA[1.0, 0.0, 0.0]) * calc_rot_matrix(SA[1.0, 0.0, 0.0], SA[0.0, 0.0, 1.0])
 
-    center = [0.08, 0, 0]
+    center = [-0.0785, 0, 0]
+    #center = [0., 0., 0.]
     @views for col in eachcol(coords[:, 1:8])
         cart = sph_to_cart(col[1], col[2]) + center
         cart_shifted = cart / norm(cart)
         col[:] .= cart_to_sph((R' * cart_shifted)...)
     end
 
-    center = [0.08, 0, 0]
+    center = [0.0785, 0, 0]
+    #center = [0., 0., 0.]
     R = calc_rot_matrix(SA[0.0, 1.0, 0.0], SA[1.0, 0.0, 0.0]) * calc_rot_matrix(SA[1.0, 0.0, 0.0], SA[0.0, 0.0, -1.0])
     @views for col in eachcol(coords[:, 9:16])
         cart = sph_to_cart(col[1], col[2]) + center
@@ -85,7 +97,7 @@ function calc_pmt_coords()
 end
 
 
-function build_acceptance_model(geant4_sims)
+function build_acceptance_model(geant4_sims, acceptance_scale=1.5)
 
     coords = calc_pmt_coords()
 
@@ -115,7 +127,9 @@ function build_acceptance_model(geant4_sims)
             pmt_coords = coords_cart[:, pmt_ix]
 
             in_pos_cart_norm = Matrix{Float64}(df[!, [:in_norm_x, :in_norm_y, :in_norm_z]])
+            #in_dir_cart_norm = .- Matrix{Float64}(df[!, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]])
             rel_costheta = dot.(eachrow(in_pos_cart_norm), Ref(pmt_coords))
+
 
             #=
             hit_pmt::BitVector = (
@@ -128,11 +142,14 @@ function build_acceptance_model(geant4_sims)
             hit_pmt::BitVector = df[:, :pmt_Volume_CopyNo] .== (pmt_ix-1)
             
             rel_theta = acos.(rel_costheta[hit_pmt])
+            
 
             push!(all_hc[pmt_grp], rel_theta)
 
         end
         
+
+
         any_hit = df[:, :pmt_Volume_CopyNo] .!= -1
 
         mask_grp_1 = any_hit .&& (div.(df[:, :out_Volume_CopyNo],  4) .% 2 .== 0)
@@ -140,8 +157,9 @@ function build_acceptance_model(geant4_sims)
 
         # mask_grp_1 / mask_grp_2 are the probabilities to hit any pmt from the PMT group
         # have to account the number of PMTs per group to get the probability for a specific pmt
-        push!(total_acc_1, sum(mask_grp_1) / n_sim)
-        push!(total_acc_2, sum(mask_grp_2) / n_sim)
+        # acceptance scale is a global acceptance scale factor
+        push!(total_acc_1, sum(mask_grp_1) / n_sim * acceptance_scale)
+        push!(total_acc_2, sum(mask_grp_2) / n_sim * acceptance_scale)
     end
 
     wlsort = sortperm(wavelengths)
@@ -165,9 +183,158 @@ end
 sim_path = joinpath(ENV["ECAPSTOR"], "geant4_pmt/30cm_sphere/V15_ch/")
 files = glob("*.csv", sim_path)
 
-df = DataFrame(CSV.File("/home/wecapstor3/capn/capn100h/geant4_pmt/30cm_sphere/V15_ch/sim_420.csv"))
+df = DataFrame(CSV.File("/home/wecapstor3/capn/capn100h/geant4_pmt/30cm_sphere/V15_ch/sim_520.csv"))
 calc_coordinates!(df)
-mask = df[:, :out_VolumeName] .== "photocathode" .&& df[:, :out_Volume_CopyNo] .== 1
+
+df[:, :in_p_theta]
+
+any_hit = df[:, :pmt_Volume_CopyNo] .!= -1
+bins = -1:0.1:1
+
+h1 = Hist1D(cos.(df[:, :in_p_theta]), binedges=bins)
+h2 = Hist1D(cos.(df[any_hit, :in_p_theta]), binedges=bins)
+
+ratio = h2/h1
+
+plot(ratio)
+plot(h2)
+
+coords = calc_pmt_coords()
+coords_cart = reduce(hcat, sph_to_cart.(eachcol(coords)))
+
+total_area = 0.3^2 * π 
+pmt_area = (75e-3 / 2)^2 * π
+
+
+pmt_area / total_area
+
+
+pmt_ix = 15
+pmt_coords = coords_cart[:, pmt_ix]
+pmt_sph = cart_to_sph((coords_cart[:, pmt_ix]))
+mask = df[:, :pmt_Volume_CopyNo] .== (pmt_ix-1)
+in_dir_cart_norm = Matrix{Float64}(df[!, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]])
+in_pos_cart_norm = Matrix{Float64}(df[!, [:in_norm_x, :in_norm_y, :in_norm_z]])
+
+in_pos_sph_norm = reduce(hcat, cart_to_sph.(eachrow(in_pos_cart_norm)))
+in_dir_sph_norm = reduce(hcat, cart_to_sph.(eachrow(in_dir_cart_norm)))
+
+
+rel_costheta = dot.(eachrow(.-in_dir_cart_norm), Ref(pmt_coords))
+rel_costheta_pos = dot.(eachrow(in_pos_cart_norm), Ref(pmt_coords))
+
+sel_hit = rel_costheta .< -0.95 .&& mask .&& rel_costheta_pos .> 0.9
+sel_nohit = rel_costheta .< -0.95 .&& .!mask .&& rel_costheta_pos .> 0.9
+fig, ax, s= scatter(in_dir_sph_norm[1, sel_hit], in_dir_sph_norm[2, sel_hit])
+scatter!(ax, in_dir_sph_norm[1, sel_nohit], in_dir_sph_norm[2, sel_nohit])
+scatter!(ax, pmt_sph[1], pmt_sph[2], color=:red, markersize=10)
+fig
+
+bins = -1:0.05:1
+
+h1_m = Hist1D(;binedges=bins)
+h1_a = Hist1D(;binedges=bins)
+h2_m = Hist1D(;binedges=bins)
+h2_a = Hist1D(;binedges=bins)
+
+
+for pmt_ix in 1:16
+    pmt_grp = div.(pmt_ix-1,  4) .% 2 
+    mask = df[:, :pmt_Volume_CopyNo] .== (pmt_ix-1)
+    pmt_coords = coords_cart[:, pmt_ix]
+    in_pos_cart_norm = Matrix{Float64}(df[!, [:in_norm_x, :in_norm_y, :in_norm_z]])
+
+    in_dir_cart_norm = Matrix{Float64}(df[!, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]])
+
+    rel_costheta = dot.(eachrow(in_dir_cart_norm), Ref(pmt_coords))
+
+    pmt_grp = div.(pmt_ix-1,  4) .% 2
+
+    if pmt_grp == 1
+        push!.(h1_a, rel_costheta)
+        push!.(h1_m, rel_costheta[mask])
+    else
+        push!.(h2_a, rel_costheta)
+        push!.(h2_m, rel_costheta[mask])
+    end
+   
+   
+    #vlines!(ax, 1- 2 * pmt_area / total_area)
+end
+
+ratio_1 = h1_m / h1_a
+ratio_2 = h2_m / h2_a
+
+fig = Figure()
+ax = Axis(fig[1, 1], xlabel="Photon Direction * PMT Axis", ylabel="Acceptance", title="Angle between photon direction and PMT axis")
+plot!(ax, ratio_1, label="PMT Group 1")
+plot!(ax, ratio_2, label="PMT Group 2")
+total_area = 0.3^2 * π 
+pmt_area = (75e-3 / 2)^2 * π
+hlines!(ax, pmt_area / total_area, label="PMT Area / Module X-Sec")
+axislegend()
+fig
+
+xs = -1:0.01:1
+function func(x, scale, loc)
+    
+    norm = atan(-scale*(-1-loc)) - atan(-scale*(1-loc))
+    offset = atan(-scale*(1-loc))
+    
+    return ((atan(-scale*(x-loc))) - offset) /norm #- offset
+end
+func(1, 4, -0.5)
+
+lines!(ax, xs, 0.011 .* func.(xs, 4, -0.5))
+
+#lines!(ax, xs, pol.(xs))
+
+fig
+#ratio ./= area_fraction
+#ax = pmt_grp == 0 ? ax1 : ax2
+
+@show pmt_ix, div((pmt_ix-1),4)
+ax = axes[div((pmt_ix-1),4)+1]
+stairs!(ax, bins, [ratio; ratio[end]])
+1- 2 * pmt_area / total_area
+
+fig
+pmt_ix = 9
+
+
+
+pmt_coords = coords_cart[:, pmt_ix]
+
+
+
+
+
+
+
+
+
+
+cap_area = .-diff(2*π*0.3^2 .*(1 .- bins))
+area_fraction = cap_area ./ (4*pi*0.3^2)
+
+
+
+fig
+
+1- 2 * pmt_area / total_area = costheta
+
+
+
+
+
+fig, ax , s =stairs(bins, [area_fraction; area_fraction[end]])
+pmt_area = (75e-3 / 2)^2 * π
+hlines!(ax, pmt_area)
+fig
+
+hist(acos.(rel_costheta), normalization=:pdf)
+hist(acos.(rel_costheta[mask]), normalization=:pdf)
+
 
 in_acc_sph = reduce(hcat, cart_to_sph.(eachrow(Matrix(df[:, [:in_norm_x, :in_norm_y, :in_norm_z]]))))
 in_p_acc_sph = reduce(hcat, cart_to_sph.(eachrow(Matrix(df[:, [:in_p_norm_x, :in_p_norm_y, :in_p_norm_z]]))))
@@ -196,9 +363,9 @@ ax = Axis(fig[1, 1], xlabel="Angular Distance to PMT axis (rad)", ylabel="PDF")
 bins = 0:0.05:π
 colors = Makie.wong_colors()
 hist!(ax, (reduce(vcat, all_hc_1)), bins=bins, label="PMT Group 1", normalization=:pdf, color=(colors[1], 0.7))
-plot!(ax, d1)
+plot!(ax, d1);
 hist!(ax, (reduce(vcat, all_hc_2)), bins=bins, label="PMT Group 2", normalization=:pdf, color=(colors[2], 0.7))
-plot!(ax, d2)
+plot!(ax, d2);
 axislegend()
 #ylims!(ax, 1E-3, 10)
 fig
@@ -392,7 +559,7 @@ function rand_sph(n)
 end
 
 target = POM(SA_F32[0., 0., 10.], UInt16(1))
-medium = make_cascadia_medium_properties(0.95f0)
+medium = CascadiaMediumProperties()
 source = PointlikeIsotropicEmitter(SA_F32[0., 0., 0.], 0f0, 10000)
 spectrum = Monochromatic(410f0)
 
@@ -411,6 +578,9 @@ setup = PhotonPropSetup([source], [target], medium, spectrum, seed, 1.)
 hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
 
 acceptance_ratio = nrow(hits) / n
+
+
+2* acceptance_ratio * 30^2 / 21.59^2 
 
 hit_normed_pos = (hits[:, :position] .- Ref(target.shape.position)) ./ target.shape.radius
 
