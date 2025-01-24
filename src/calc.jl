@@ -160,8 +160,8 @@ Calculate the geometric time delay for a track in a medium.
 - It then calls the `calc_tgeo_tracks` function with the calculated refractive indices to compute the geometric time delay.
 """
 function calc_tgeo_tracks(p0, dir, pos, medium::MediumProperties, wavelength=800.)
-    n_ph = phase_refractive_index(wavelength, medium)
-    n_grp = c_vac_m_ns / group_velocity(wavelength, medium)
+    n_ph = phase_refractive_index(medium, wavelength)
+    n_grp = c_vac_m_ns / group_velocity(medium, wavelength)
     return calc_tgeo_tracks(p0, dir, pos, n_ph, n_grp)
 end
 

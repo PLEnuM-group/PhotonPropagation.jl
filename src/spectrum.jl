@@ -87,13 +87,13 @@ struct Spectrum{D <: SpectralDist, S, T<:Real}
 end
 
 function make_cherenkov_spectrum(wl_range, medium)
-    sfunc = wl -> frank_tamm(wl, phase_refractive_index(wl, medium)) * 1E9
+    sfunc = wl -> frank_tamm(wl, phase_refractive_index(medium, wl)) * 1E9
     d = make_spectral_dist(sfunc, wl_range)
     return Spectrum(d, sfunc, wl_range)
 end
 
 function make_biased_cherenkov_spectrum(bias_function, wl_range, medium)
-    sfunc = wl -> frank_tamm(wl, phase_refractive_index(wl, medium)) * bias_function(wl)  * 1E9
+    sfunc = wl -> frank_tamm(wl, phase_refractive_index(medium, wl)) * bias_function(wl)  * 1E9
     d = make_spectral_dist(sfunc, wl_range, eltype(wl_range)(0.5))
     return Spectrum(d, sfunc, wl_range)
 end

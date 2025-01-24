@@ -402,7 +402,7 @@ function total_lightyield(::Track, energy::Number, length::Number, medium, spect
 
     # This is probably correct...
     function integrand(wl)
-        ref_ix = phase_refractive_index(wl, medium)
+        ref_ix = phase_refractive_index(medium, wl)
         return spectrum.spectrum(wl) * (1 + rel_additional_track_length(ref_ix, energy))
     end
     total_contrib = integrate_gauss_quad(integrand, spectrum.wl_range[1], spectrum.wl_range[2]) *  length
