@@ -35,7 +35,7 @@ function main(parsed_args)
     end
 
     rng = MersenneTwister(parsed_args[:s])
-    hbc, hbg = make_hit_buffers()
+    hbc, hbg = make_hit_buffers(Float32, 0.4)
     wl_range = (300.0f0, 800.0f0)
     g = 0.95f0
     target = POM(SA_F32[0, 0, 0], UInt16(1))
@@ -53,14 +53,14 @@ function main(parsed_args)
     for _ in 1:parsed_args[:n]
         position = sample_position_sphere(rng, 100)
         direction = sample_uniform_direction(rng)
-        energy = 10 .^ rand(rng, Uniform(2, 6))
+        energy = 10 .^ rand(rng, Uniform(2, 7))
 
         particle = Particle(position, direction, 0., energy, plength, ptype)
         particle = convert(Particle{Float32}, particle)
 
         abs_scale = Float32(1 + randn(rng) * 0.05)
         sca_scale = Float32(1 + randn(rng) * 0.05)
-        medium = make_cascadia_medium_properties(g, abs_scale, sca_scale)
+        medium = CascadiaMediumProperties(g, abs_scale, sca_scale)
         spectrum = make_cherenkov_spectrum(wl_range, medium)
         
         lightsource = lst(particle, medium, spectrum)

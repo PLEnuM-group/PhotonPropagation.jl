@@ -550,6 +550,8 @@ using Random
 using LinearAlgebra
 using NeutrinoTelescopes
 using PhotonPropagation
+using JET
+using PhysicsTools
 n = 5000000
 
 function rand_sph(n)
@@ -561,7 +563,7 @@ end
 target = POM(SA_F32[0., 0., 10.], UInt16(1))
 medium = CascadiaMediumProperties()
 source = PointlikeIsotropicEmitter(SA_F32[0., 0., 0.], 0f0, 10000)
-spectrum = Monochromatic(410f0)
+spectrum = Monochromatic(450f0)
 
 normed_pos = sph_to_cart.(rand_sph(n)...)
 positions = target.shape.radius .* normed_pos .+ Ref(target.shape.position)
@@ -577,10 +579,20 @@ setup = PhotonPropSetup([source], [target], medium, spectrum, seed, 1.)
 
 hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
 
+#@report_opt make_hits_from_photons(photons, setup, RotMatrix3(I))
+
+
 acceptance_ratio = nrow(hits) / n
 
+target.pmt_area
 
-2* acceptance_ratio * 30^2 / 21.59^2 
+(4 * cos(deg2rad(32.5)) + 4 *cos(deg2rad(65))) * target.pmt_area / (target.shape.radius^2 * π)
+
+target.shape.radius^2 * π
+
+
+
+acceptance_ratio * 30^2 / 21.59^2 
 
 hit_normed_pos = (hits[:, :position] .- Ref(target.shape.position)) ./ target.shape.radius
 

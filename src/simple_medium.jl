@@ -8,9 +8,8 @@ Base.@kwdef struct SimpleMediumProperties{T <: Real} <: MediumProperties
     group_velocity::T
 end
 
-AbstractMediumProperties.absorption_length(::Real, medium::SimpleMediumProperties) = medium.absorption_length
-AbstractMediumProperties.scattering_length(::Real, medium::SimpleMediumProperties) = medium.scattering_length
-AbstractMediumProperties.phase_refractive_index(::Real, medium::SimpleMediumProperties) = medium.phase_refractive_index
-AbstractMediumProperties.mean_scattering_angle(medium::SimpleMediumProperties) = medium.mean_scattering_angle
-AbstractMediumProperties.scattering_function(medium::SimpleMediumProperties) = hg_scattering_func(mean_scattering_angle(medium))
-AbstractMediumProperties.group_velocity(::Real, medium::SimpleMediumProperties) = medium.group_velocity
+CherenkovMediumBase.absorption_length(medium::SimpleMediumProperties, ::Real, ) = medium.absorption_length
+CherenkovMediumBase.scattering_length(medium::SimpleMediumProperties, ::Real, ) = medium.scattering_length
+CherenkovMediumBase.phase_refractive_index(::Real, medium::SimpleMediumProperties) = medium.phase_refractive_index
+CherenkovMediumBase.sample_scattering_function(medium::SimpleMediumProperties) = hg_scattering_func(mean_scattering_angle(medium))
+CherenkovMediumBase.group_velocity(medium::SimpleMediumProperties, ::Real, ) = medium.group_velocity

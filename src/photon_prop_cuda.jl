@@ -13,7 +13,7 @@ using PoissonRandom
 using Rotations
 using StructArrays
 using PhysicsTools
-using AbstractMediumProperties
+using CherenkovMediumBase
 
 using LLVM.Interop
 
@@ -78,7 +78,7 @@ end
 function sample_cherenkov_direction(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
 
     # Sample a photon direction. Assumes track is aligned with e_z
-    theta_cherenkov = cherenkov_angle(wl, medium)
+    theta_cherenkov = cherenkov_angle(medium, wl)
     phi = uniform(T(0), T(2 * pi))
     ph_dir = sph_to_cart(theta_cherenkov, phi)
 
@@ -98,7 +98,7 @@ end
 function sample_cherenkov_direction_no_smear(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
 
     # Sample a photon direction. Assumes track is aligned with e_z
-    theta_cherenkov = cherenkov_angle(wl, medium)
+    theta_cherenkov = cherenkov_angle(medium, wl)
     phi = uniform(T(0), T(2 * pi))
     ph_dir = sph_to_cart(theta_cherenkov, phi)
 
@@ -112,7 +112,7 @@ function sample_cherenkov_direction_more_smear(source::CherenkovEmitter{T}, medi
 
     # Sample a photon direction. Assumes track is aligned with e_z
     jitter::T = randn(T) * source.extra_jitter
-    theta_cherenkov::T = cherenkov_angle(wl, medium) + jitter
+    theta_cherenkov::T = cherenkov_angle(medium, wl) + jitter
     phi = uniform(T(0), T(2 * pi))
     ph_dir = sph_to_cart(theta_cherenkov, phi)
 
@@ -132,7 +132,7 @@ end
 function sample_cherenkov_direction_custom_smear(source::CherenkovEmitter{T}, medium::MediumProperties, wl::T) where {T<:Real}
 
     # Sample a photon direction. Assumes track is aligned with e_z
-    theta_cherenkov::T = cherenkov_angle(wl, medium) 
+    theta_cherenkov::T = cherenkov_angle(medium, wl) 
     phi = uniform(T(0), T(2 * pi))
     ph_dir = sph_to_cart(theta_cherenkov, phi)
 
@@ -281,7 +281,7 @@ function update_direction(this_dir::SVector{3,T}, medium::MediumProperties) wher
     =#
 
     # Calculate new direction (relative to e_z)
-    cos_sca_theta = scattering_function(medium)
+    cos_sca_theta = sample_scattering_function(medium)
     sin_sca_theta = sqrt(1 - cos_sca_theta^2)
     sca_phi = uniform(T(0), T(2 * pi))
 
@@ -302,6 +302,9 @@ function update_position(pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) whe
     #return @SVector[CUDA.fma(step_size, dir[j], pos[j]) for j in 1:3]
     return pos .+ dir .* step_size
 end
+
+
+
 
 
 function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
@@ -489,13 +492,12 @@ function cuda_propagate_photons!(
         time = photon_state.time
         dist_travelled = T(0)
 
-        sca_len::T = scattering_length(wavelength, medium)
+        sca_len::T = scattering_length(medium, wavelength)
 
-        c_grp::T = group_velocity(wavelength, medium)
+        c_grp::T = group_velocity(medium, wavelength)
         assume(c_grp > 0)
 
-        
-
+       
         for nstep in Int32(1):nsteps
 
             eta = rand(T)
@@ -550,11 +552,6 @@ function cuda_propagate_photons!(
             break
        
         end
-
-
-
-
-        
         
         n_photons_simulated = ifelse(err_code == 0, n_photons_simulated += 1, n_photons_simulated)
 
@@ -565,6 +562,9 @@ function cuda_propagate_photons!(
     
     return nothing
 end
+
+
+
 
 #=
 function cuda_propagate_photons!(

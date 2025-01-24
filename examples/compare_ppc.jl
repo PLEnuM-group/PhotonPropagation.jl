@@ -67,16 +67,14 @@ energy = Float32(3E5)
 theta = deg2rad(70f0)
 phi = deg2rad(160f0)
 direction = sph_to_cart(theta, phi)
-pos = SA_F32[-32.96, 32.44, -230]
+#pos = SA_F32[-32.96, 32.44, -230]
+pos = SA_F32[-10.96, 10.44, -230]
 p = Particle(pos, direction, 0f0, energy, 0f0, PEMinus)
 
 show(p)
 
 dir_inv = -1 .* direction
 inv_theta, inv_phi = cart_to_sph(dir_inv)
-
-
-
 
 
 
@@ -87,9 +85,13 @@ min_mod = ppc_geo[argmin(distances), :]
 
 min_mod
 
-minimum(distances)
 
-module_position = SVector{3}(closest)
+sel_ix = 4
+distances[sortperm(distances)[sel_ix]]
+
+mod_ix_sel = sortperm(distances)[sel_ix]
+
+module_position = SVector{3}(positions[mod_ix_sel, :])
 target = DOM(module_position, 1)
 wls = 300:1.:700
 lines(wls, target.acceptance.int_wl(wls))
@@ -113,6 +115,13 @@ setup = PhotonPropSetup([source], [target], medium_ice, spectrum_biased, seed, s
 #hbc, hbg = make_hit_buffers()
 photons = propagate_photons(setup, buffer_cpu, buffer_gpu, 50, copy_output=true)
 hits = make_hits_from_photons(photons, setup, RotMatrix3(I), false);
+
+hits
+
+sum(hits.total_weight)
+
+
+
 
 
 hits_pos_rel = (eachrow(Matrix(hits[:, [:pos_x, :pos_y, :pos_z]])) .- Ref(target.shape.position)) ./ target.shape.radius

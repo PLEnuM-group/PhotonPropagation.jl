@@ -1,6 +1,6 @@
 module Processing
 
-using AbstractMediumProperties
+using CherenkovMediumBase
 using DataFrames
 using Rotations
 using LinearAlgebra

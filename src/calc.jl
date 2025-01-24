@@ -1,6 +1,6 @@
 
 module Calc
-using AbstractMediumProperties
+using CherenkovMediumBase
 using PhysicalConstants.CODATA2018
 using PhysicsTools
 using Unitful

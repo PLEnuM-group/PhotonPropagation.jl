@@ -3,7 +3,7 @@ using ..Detection
 using ..Medium
 using ..Spectral
 using ..LightYield
-using AbstractMediumProperties
+using CherenkovMediumBase
 export PhotonPropSetup
 
 mutable struct PhotonPropSetup{SV<:AbstractVector{<:PhotonSource},ST<:AbstractVector{<:PhotonTarget},M<:MediumProperties,C<:SpectralDist}

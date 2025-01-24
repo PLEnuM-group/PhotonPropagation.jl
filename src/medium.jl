@@ -6,7 +6,7 @@ using Parquet2
 using DataFrames
 using StructTypes
 using PhysicsTools
-using AbstractMediumProperties
+using CherenkovMediumBase
 
 const c_vac_m_ns = ustrip(u"m/ns", SpeedOfLightInVacuum)
 
