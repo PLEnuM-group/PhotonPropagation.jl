@@ -35,7 +35,7 @@ function calc_total_weight!(df::AbstractDataFrame, setup::PhotonPropSetup)
         return df
     end
 
-    abs_length = absorption_length.(df[:, :wavelength], Ref(setup.medium))
+    abs_length = absorption_length.(Ref(setup.medium), df[:, :wavelength])
     df[!, :abs_weight] = exp.(-Float64.(df[:, :dist_travelled] ./ abs_length))
     #df[!, :ref_ix] = refractive_index.(df[:, :wavelength], Ref(setup.medium))
     df[!, :total_weight] = df[:, :base_weight] .* df[:, :abs_weight]
