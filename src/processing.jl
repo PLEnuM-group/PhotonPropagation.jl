@@ -51,10 +51,18 @@ end
 
 function propagate_photons(setup::PhotonPropSetup, hit_buffer_cpu, hit_buffer_gpu, steps=15; copy_output=false)   
 
-    hits, n_ph_sim = run_photon_prop_no_local_cache!(
-        setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spec_dist, setup.seed,
-        hit_buffer_cpu, hit_buffer_gpu, n_steps=steps, photon_scaling=setup.photon_scaling
-        )
+    
+    if typeof(setup.targets) <: DetectorLines
+        hits, n_ph_sim = run_photon_prop_no_local_cache!(
+            setup.sources, setup.targets, setup.medium, setup.spec_dist, setup.seed,
+            hit_buffer_cpu, hit_buffer_gpu, n_steps=steps, photon_scaling=setup.photon_scaling
+            )
+    else
+        hits, n_ph_sim = run_photon_prop_no_local_cache!(
+            setup.sources, [targ.shape for targ in setup.targets], setup.medium, setup.spec_dist, setup.seed,
+            hit_buffer_cpu, hit_buffer_gpu, n_steps=steps, photon_scaling=setup.photon_scaling
+            )
+    end
 
     df = DataFrame(hits, copycols=copy_output)
 

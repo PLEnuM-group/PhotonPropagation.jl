@@ -24,6 +24,8 @@ export run_photon_prop_no_local_cache!
 export make_hit_buffers
 export PhotonHit
 export PhotonPropOOMException
+export DetectorLines
+export DetectorLine
 
 
 using ..Medium
@@ -304,31 +306,15 @@ function update_position(pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) whe
 end
 
 
-
-
-
-function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
-    target_pos = target_shape.position
-    target_rsq = target_shape.radius^2
-
+function _intersect_nsphere(target_pos::SVector{N,T}, target_rsq::T, pos::SVector{N,T}, dir::SVector{N,T}, step_size) where {N, T}
     dpos = pos .- target_pos
-
-
-    #=
-    # Check if intersection is even possible
-    if any(((dpos .- target.radius) .> 0) .&& (dir .> 0))
-        return false, NaN32
-    elseif any(((dpos .+ target.radius) .< 0) .&& (dir .< 0))
-        return false, NaN32
-    end
-    =#
 
     a::T = dot(dir, dpos)
     pp_norm_sq::T = sum(dpos .^ 2)
 
-    b = fma(a, a, -pp_norm_sq + target_rsq)
+    #b = fma(a, a, -pp_norm_sq + target_rsq)
 
-    #b::Float32 = a^2 - (pp_norm_sq - target.radius^2)
+    b::T = a^2 - (pp_norm_sq - target_rsq)
 
     isec = b >= 0
 
@@ -347,32 +333,21 @@ function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVe
     d::T = ifelse(
         isec,
         -a - sqrt(b),
-        -1f0)
+        -one(T))
 
     return ifelse(
         (d > 0) & (d < step_size),
         (true, d),
-        (false, NaN32)
+        (false, T(NaN))
     )
+end
 
-    #=
-    if !isec
-        return false, NaN32
-    end
 
-    assume(b >= 0)
+function check_intersection(target_shape::Spherical, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
+    target_pos = target_shape.position
+    target_rsq::T = target_shape.radius^2
 
-    # Uncommon branch
-    # Distance of of the intersection point along the line
-    d = -a - sqrt(b)
-
-    if (d > 0) & (d < step_size)
-        return true, d
-    else
-        return false, NaN32
-    end
-    =#
-
+    return _intersect_nsphere(target_pos, target_rsq, pos, dir, step_size)  
 end
 
 function check_intersection(target_shape::Rectangular, pos::SVector{3,T}, dir::SVector{3,T}, step_size::T) where {T<:Real}
@@ -440,6 +415,16 @@ struct PhotonHit{T<:Real,U<:Real}
     n_steps::Int32
 end
 
+struct DetectorLine{T, N, S<:TargetShape}
+    x_pos::T
+    y_pos::T
+    radius::T
+    targets::SVector{N, S}
+end
+
+struct DetectorLines{T, L, N, S, V <: SVector{L, DetectorLine{T, N, S}}}
+    lines::V
+end
 
 function cuda_propagate_photons!(
     out_hits::StructArray{<:PhotonHit{T}},
@@ -563,6 +548,150 @@ function cuda_propagate_photons!(
     return nothing
 end
 
+
+function cuda_propagate_photons!(
+    out_hits::StructArray{<:PhotonHit{T}},
+    out_stack_pointer::CuDeviceVector{Int64},
+    out_n_ph_simulated::CuDeviceVector{Int64},
+    out_err_code::CuDeviceVector{Int32},
+    seed::Int64,
+    source::PhotonSource,
+    spectrum::SpectralDist,
+    targets::DetectorLines{T, L, N, S, V},
+    medium::MediumProperties,
+    nsteps::Int32,
+    photon_scaling::Float32) where {T, L, N, S, V}
+
+    block = blockIdx().x
+    thread = threadIdx().x
+    blockdim = blockDim().x
+    griddim = gridDim().x
+    # warpsize = CUDA.warpsize()
+    # warp_ix = thread % warp
+    n_threads_total = (griddim * blockdim)
+    global_thread_index::Int32 = (block - Int32(1)) * blockdim + thread
+
+    err_code::Int32 = 0
+
+    Random.seed!(seed + global_thread_index)
+
+ 
+    this_n_photons, remainder = divrem(source.photons * photon_scaling, n_threads_total)
+
+    if global_thread_index <= remainder
+        this_n_photons += 1
+    end
+
+    n_photons_simulated = Int64(0)
+
+    n_lines::Int32 = L
+    n_modules::Int32 = N
+
+    
+    @inbounds for i in 1:this_n_photons
+        if err_code == 1
+            break
+        end
+        photon_state = initialize_photon_state(source, medium, spectrum)
+
+        dir::SVector{3,T} = photon_state.direction
+        initial_dir = copy(dir)
+        wavelength::T = photon_state.wavelength
+        pos::SVector{3,T} = photon_state.position
+
+        time = photon_state.time
+        dist_travelled = T(0)
+
+        sca_len::T = scattering_length(medium, wavelength)
+
+        c_grp::T = group_velocity(medium, wavelength)
+        assume(c_grp > 0)
+
+        
+        for nstep in Int32(1):nsteps
+
+            eta = rand(T)
+            assume(eta > 0)
+            step_size::T = -log(eta) * sca_len
+
+            # Check intersection with module
+
+            isec = false
+            dist_to_target = 0.0f0
+            module_ix = Int32(0)
+
+            pos_2d = SVector{2, T}(pos[1], pos[2])
+            dir_2d = SVector{2, T}(dir[1], dir[2])
+
+            for lix in eachindex(targets.lines)
+                
+                line = targets.lines[lix]
+                
+                line_pos = SVector{2, T}(line.x_pos, line.y_pos)
+                line_rsq::T = line.radius^2
+                
+                isec, _ = _intersect_nsphere(line_pos, line_rsq, pos_2d, dir_2d, step_size)
+                if isec
+                    for tix in Int32(1):n_modules
+                        target = line.targets[tix]
+                        isec, d = check_intersection(target, pos, dir, step_size)
+
+                        if isec
+                            module_ix = tix + n_modules * lix
+                            dist_to_target = d
+                            break
+                        end
+                    end
+                    
+                    break
+                end
+                
+               
+            end
+
+            if !isec
+                pos = update_position(pos, dir, step_size)
+                dist_travelled += step_size
+                time += step_size / c_grp
+                dir = update_direction(dir, medium)
+                continue
+            end
+
+            # Intersected
+            pos = update_position(pos, dir, dist_to_target)
+            dist_travelled += dist_to_target
+            time += dist_to_target / c_grp
+
+            # Check if there's enough space in the output vector
+            if out_stack_pointer[1] >= length(out_hits)
+                err_code = 1
+                break
+            end
+
+            stack_idx::Int64 = CUDA.atomic_add!(pointer(out_stack_pointer, 1), Int64(1))
+            
+            out_hits.position[stack_idx] = pos
+            out_hits.direction[stack_idx] = dir
+            out_hits.initial_direction[stack_idx] = initial_dir
+            out_hits.time[stack_idx] = time
+            out_hits.wavelength[stack_idx] = wavelength
+            out_hits.dist_travelled[stack_idx] = dist_travelled
+            out_hits.module_id[stack_idx] = module_ix
+            out_hits.n_steps[stack_idx] = nstep
+            break
+        
+        end
+        
+        n_photons_simulated = ifelse(err_code == 0, n_photons_simulated += 1, n_photons_simulated)
+        
+    end
+    
+
+    CUDA.atomic_add!(pointer(out_n_ph_simulated, 1), n_photons_simulated)
+    CUDA.atomic_or!(pointer(out_err_code, 1), err_code)
+
+    return nothing
+end
 
 
 
@@ -759,7 +888,7 @@ end
 
 function run_photon_prop_no_local_cache!(
     sources::AbstractVector{<:PhotonSource},
-    targets::AbstractVector{<:TargetShape},
+    targets,
     medium::MediumProperties,
     spectrum::SpectralDist,
     seed::Int64,
@@ -777,10 +906,13 @@ function run_photon_prop_no_local_cache!(
     stack_idx = CuVector(ones(Int64, 1))
     n_ph_sim = CuVector(zeros(Int64, 1))
     err_code = CuVector(zeros(Int32, 1))
-    targets = CuVector(targets)
+    
+    if !isa(targets, DetectorLines)
+        targets = CuVector(targets)
+    end
 
 
-    kernel = @cuda always_inline=true launch = false maxregs=64 cuda_propagate_photons!(
+    kernel = @cuda always_inline=true launch = false cuda_propagate_photons!(
         photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
         sources[1], spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
 
@@ -790,14 +922,16 @@ function run_photon_prop_no_local_cache!(
 
     # Can assign photons to sources by keeping track of stack_idx for each source
     for source in sources
-        
-        CUDA.@sync @cuda always_inline=true threads=threads blocks=blocks maxregs=64 cuda_propagate_photons!(
+    
+        CUDA.@sync @cuda always_inline=true threads=threads blocks=blocks cuda_propagate_photons!(
                 photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
                 source, spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
         # We ran out of memory
         if Vector(err_code)[1] == 1
             throw(PhotonPropOOMException())
         end
+   
+    
 
     end
 

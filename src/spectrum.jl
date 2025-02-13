@@ -51,6 +51,8 @@ function make_spectral_dist(spect_func, wl_range::Tuple{T, T}, step_size::T=T(1)
         norms[i] = integrate_gauss_quad(spect_func, wl_range[1], step, 25) / full_norm
     end
 
+    Interpolations.deduplicate_knots!(norms, move_knots=true)
+
     #push!(wl_steps, wl_range[2]+step_size)
     #push!(norms, T(1))
 

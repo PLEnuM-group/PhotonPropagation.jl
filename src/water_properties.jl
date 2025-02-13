@@ -6,6 +6,11 @@ export CascadiaMediumProperties
 
 abstract type WaterProperties{T<:Real} <: MediumProperties end
 
+# guarantee that all water properties have the same interface
+CherenkovMediumBase.get_scattering_model(medium::WaterProperties) = medium.scattering_model
+CherenkovMediumBase.get_dispersion_model(medium::WaterProperties) = medium.dispersion_model
+CherenkovMediumBase.get_absorption_model(medium::WaterProperties) = medium.absorption_model
+
 """
     _absorption_length_straw(wavelength::Real)
 Calculate the absorption length at `wavelength` (in nm).
@@ -22,7 +27,7 @@ end
 
 
 const ABSLENGTHSTRAWFIT = let df = DataFrame(Parquet2.Dataset(joinpath(pkgdir(@__MODULE__), "assets/attenuation_length_straw_fit.parquet")))
-    SA[Matrix(df[:, [:wavelength, :abs_len]])]
+    Matrix{Float64}((df[:, [:wavelength, :abs_len]]))
 end
 
 const CASCADIA_ES_B = 0.835
@@ -52,13 +57,16 @@ struct CascadiaMediumProperties{T<:Real, F, ITP} <: WaterProperties{T}
         scattering_function = MixedHGES(T(hg_g), T(CASCADIA_ES_B), T(1)-pure_water_fraction)#
         scattering_model = KopelevichScatteringModel(
             scattering_function,
-            KM3NeT_VOL_CONC_LARGE_PART,
-            KM3NeT_VOL_CONC_SMALL_PART
+            T(CASCADIA_VOL_CONC_LARGE_PART),
+            T(CASCADIA_VOL_CONC_SMALL_PART)
         )
         
-        dispersion_model = QuanFryDispersion(CASCADIA_SALINITY, CASCADIA_TEMPERATURE, CASCADIA_PRESSURE)
+        dispersion_model = QuanFryDispersion(T(CASCADIA_SALINITY), T(CASCADIA_TEMPERATURE), T(CASCADIA_PRESSURE))
 
-        absorption_model = InterpolatedAbsorptionModel(ABSLENGTHSTRAWFIT[:, 1], ABSLENGTHSTRAWFIT[:, 2])
+        wls =  SVector{size(ABSLENGTHSTRAWFIT, 1), T}(ABSLENGTHSTRAWFIT[:, 1])
+        abs_lens = SVector{size(ABSLENGTHSTRAWFIT, 1), T}(ABSLENGTHSTRAWFIT[:, 2])
+
+        absorption_model = InterpolatedAbsorptionModel(wls, abs_lens)
 
         return new{T, typeof(scattering_function), typeof(absorption_model.interpolation)}(
             abs_scale,
@@ -84,9 +92,10 @@ function CherenkovMediumBase.absorption_length(medium::CascadiaMediumProperties,
     return abs_len * medium.abs_scale
 end
 
-function CherenkovMediumBase.scattering_length(mediun::CascadiaMediumProperties, wavelength)
+function CherenkovMediumBase.scattering_length(medium::CascadiaMediumProperties, wavelength)
     sca_model = get_scattering_model(medium)
     sca_len = scattering_length(sca_model, wavelength)
 
     return sca_len * medium.sca_scale
 end
+

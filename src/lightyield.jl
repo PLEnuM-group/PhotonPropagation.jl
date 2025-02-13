@@ -418,7 +418,7 @@ function total_lightyield(::Cascade, energy::Real, ptype, spectrum)
     total_contrib = (spectrum.spectral_dist.normalization *
         cascade_cherenkov_track_length(energy, ptype)
     )
-    return total_contrib
+    return oftype(energy, total_contrib)
 end
 
 
