@@ -1,0 +1,12 @@
+import numpy as np
+
+include: "rules/table_for_sr.smk"
+
+distances = [0.5, 1, 5, 10, 20, 50, 70, 100, 150, 200, 250, 300]
+energies = [1E2, 5E2, 1E3, 5E3, 1E4, 5E4, 1E5, 5E5, 1E6]
+n_per_set = 5
+
+
+rule all:
+    input:
+        expand("results/{mode}/output_dist{dist}_energy{energy}_ix{ix}.arrow", mode=["em_shower", "hadronic_shower"], dist=distances, energy=energies, ix=range(n_per_set))

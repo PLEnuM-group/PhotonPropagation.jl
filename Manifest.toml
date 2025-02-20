@@ -1,8 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.2"
+julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "133da439a2cb26a108ac1e15f56a6c49fc34cec5"
+project_hash = "2a124fce810c3be203301d110a64b183cdc3904c"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -104,18 +104,20 @@ version = "1.11.0"
 
 [[deps.Atomix]]
 deps = ["UnsafeAtomics"]
-git-tree-sha1 = "c3b238aa28c1bebd4b5ea4988bebf27e9a01b72b"
+git-tree-sha1 = "93da6c8228993b0052e358ad592ee7c1eccaa639"
 uuid = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
-version = "1.0.1"
+version = "1.1.0"
 
     [deps.Atomix.extensions]
     AtomixCUDAExt = "CUDA"
     AtomixMetalExt = "Metal"
+    AtomixOpenCLExt = "OpenCL"
     AtomixoneAPIExt = "oneAPI"
 
     [deps.Atomix.weakdeps]
     CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
     Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
+    OpenCL = "08131aa3-fb12-5dee-8b74-c09406e224a2"
     oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [[deps.AxisAlgorithms]]
@@ -562,12 +564,6 @@ git-tree-sha1 = "a007feb38b422fbdab534406aeca1b86823cb4d6"
 uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
 version = "1.7.0"
 
-[[deps.JSON]]
-deps = ["Dates", "Mmap", "Parsers", "Unicode"]
-git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
-uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
-version = "0.21.4"
-
 [[deps.JSON3]]
 deps = ["Dates", "Mmap", "Parsers", "PrecompileTools", "StructTypes", "UUIDs"]
 git-tree-sha1 = "1d322381ef7b087548321d3f878cb4c9bd8f8f9b"
@@ -779,14 +775,15 @@ uuid = "c8ffd9c3-330d-5841-b78e-0817d7145fa1"
 version = "2.28.6+0"
 
 [[deps.Measurements]]
-deps = ["Calculus", "LinearAlgebra", "Printf", "Requires"]
-git-tree-sha1 = "bdcde8ec04ca84aef5b124a17684bf3b302de00e"
+deps = ["Calculus", "LinearAlgebra", "Printf"]
+git-tree-sha1 = "3019b28107f63ee881f5883da916dd9b6aa294c1"
 uuid = "eff96d63-e80a-5855-80a2-b1b0885c5ab7"
-version = "2.11.0"
+version = "2.12.0"
 
     [deps.Measurements.extensions]
     MeasurementsBaseTypeExt = "BaseType"
     MeasurementsJunoExt = "Juno"
+    MeasurementsMakieExt = "Makie"
     MeasurementsRecipesBaseExt = "RecipesBase"
     MeasurementsSpecialFunctionsExt = "SpecialFunctions"
     MeasurementsUnitfulExt = "Unitful"
@@ -794,6 +791,7 @@ version = "2.11.0"
     [deps.Measurements.weakdeps]
     BaseType = "7fbed51b-1ef5-4d67-9085-a4a9b26f478c"
     Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
+    Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
     RecipesBase = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
     SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
     Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
@@ -920,9 +918,9 @@ version = "0.2.4"
 
 [[deps.PhysicsTools]]
 deps = ["CondaPkg", "DataStructures", "Distributions", "FastGaussQuadrature", "LinearAlgebra", "Logging", "PhysicalConstants", "Pkg", "Polynomials", "PreferenceTools", "Random", "Reexport", "Roots", "StaticArrays", "Unitful"]
-git-tree-sha1 = "dd0d54084c1e79c6cfac95a47cf0a56cd76c21e5"
+git-tree-sha1 = "a7683f12ad2a3b8eb474ec4e59d585cb27035b4a"
 uuid = "aacfb283-0df6-49c4-85a4-270b72c3b0a9"
-version = "0.8.1"
+version = "0.8.2"
 
 [[deps.Pidfile]]
 deps = ["FileWatching", "Test"]
