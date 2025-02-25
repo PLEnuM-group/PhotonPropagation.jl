@@ -1,6 +1,7 @@
 
 module Calc
 using CherenkovMediumBase
+using NeutrinoTelescopeBase
 using PhysicalConstants.CODATA2018
 using PhysicsTools
 using Unitful

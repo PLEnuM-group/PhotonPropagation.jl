@@ -3,8 +3,9 @@ module Output
 using DataFrames
 using HDF5
 using Base.Iterators
+using NeutrinoTelescopeBase
 using ..LightYield
-using ..Detection
+
 export hit_list_to_dataframe, targets_to_dataframe, event_info_to_dataframe, source_to_namedtuple, dataframe_to_hit_list
 export save_event
 

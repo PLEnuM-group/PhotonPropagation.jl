@@ -14,7 +14,7 @@ using Rotations
 using StructArrays
 using PhysicsTools
 using CherenkovMediumBase
-
+using NeutrinoTelescopeBase
 using LLVM.Interop
 
 export cuda_propagate_photons!, initialize_photon_arrays, process_output
@@ -30,7 +30,7 @@ export DetectorLine
 
 using ..Medium
 using ..Spectral
-using ..Detection
+
 using ..LightYield
 
 
