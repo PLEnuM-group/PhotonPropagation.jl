@@ -39,6 +39,7 @@ TerminalLoggers = "5d786b92-1e48-4d6f-9151-6b4477ca9bed"
 Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 
 [compat]
+CSV = "0.10"
 CUDA = "4, 5"
 CherenkovMediumBase = "1.0.0"
 NeutrinoTelescopeBase = "1.0.0"
