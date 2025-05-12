@@ -9,9 +9,12 @@ using Distributions
 using StatsBase
 using Arrow
 using ArgParse
+using Logging
 
+logger = ConsoleLogger()
+global_logger(logger)
 
-hbc, hbg = make_hit_buffers(Float32, 0.5);
+hbc, hbg = make_hit_buffers(Float32, 0.3);
 
 function make_particle(mode, pos, dir, energy, medium, spectrum)
     if mode == "em_shower"
@@ -111,6 +114,7 @@ function main(args)
     writer = open(Arrow.Writer, args["outfile"])
 
     for isim in 1:args["nsims"]
+        @info "Starting simulation $isim"
 
         dir = Float32.(rand_vec())
         pos = Float32(args["dist"]) * Float32.(rand_vec())
@@ -137,7 +141,7 @@ function main(args)
             prop_source = setup.sources[1]
             
             if prop_source.photons > 1E13
-                println("More than 1E13 photons, skipping")
+                @warn "More than 1E13 photons, skipping"
                 return nothing
             end
 
@@ -153,7 +157,7 @@ function main(args)
                 photons = propagate_photons(setup, hbc, hbg, copy_output=true)
             catch e
                 if isa(e, PhotonPropOOMException)
-                    println("Photon prop ran out of memory, rescaling.")
+                    @info "Photon prop ran out of memory, rescaling."
                     failure_mode = 1
                     continue
                 else
@@ -162,7 +166,7 @@ function main(args)
             end
             
             if nrow(photons) < 100
-                println("Too few photons, rescaling")
+                @info "Too few photons, rescaling"
                 failure_mode = 2 
                 continue        
             end  
@@ -171,6 +175,8 @@ function main(args)
         end
         
         photons[:, :total_weight] .*= base_weight
+
+        select!(photons, Not([:abs_weight, :n_steps, :initial_direction, :dist_travelled]))
 
         hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
         calc_pe_weight!(hits, [target])

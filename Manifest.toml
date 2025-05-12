@@ -216,9 +216,7 @@ weakdeps = ["SparseArrays"]
 
 [[deps.CherenkovMediumBase]]
 deps = ["Distributions", "Interpolations", "Polynomials", "Random", "StaticArrays"]
-git-tree-sha1 = "ff24e2e527d0f8b0dd76168446dd25675e93c114"
-repo-rev = "main"
-repo-url = "https://github.com/JuliaHEP/CherenkovMediumBase.jl"
+git-tree-sha1 = "ac7af60b59b116671932f6517f2057cbbbcfa78c"
 uuid = "62ded331-ac74-4432-90fd-7fafc84e95f4"
 version = "1.0.0"
 

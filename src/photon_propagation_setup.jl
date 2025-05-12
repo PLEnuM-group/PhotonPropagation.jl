@@ -1,5 +1,4 @@
 module PhotonPropagationSetup
-using ..Detection
 using ..Medium
 using ..Spectral
 using ..LightYield

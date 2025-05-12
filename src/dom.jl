@@ -68,8 +68,8 @@ function Base.convert(::Type{DOM{T}}, x::DOM) where {T}
     return DOM{T}(shape, x.pmt_area, x.acceptance, x.module_id)
 end
 
-get_pmt_count(::DOM) = 1
-get_pmt_count(::Type{<:DOM}) = 1
+NeutrinoTelescopeBase.get_pmt_count(::DOM) = 1
+NeutrinoTelescopeBase.get_pmt_count(::Type{<:DOM}) = 1
 
 StructTypes.StructType(::Type{<:DOM}) = StructTypes.CustomStruct()
 StructTypes.lower(x::DOM) = (x.shape.position, x.module_id)

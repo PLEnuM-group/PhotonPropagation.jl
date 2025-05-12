@@ -116,8 +116,8 @@ function Base.convert(::Type{POM{T}}, x::POM) where {T}
     return POM(shape, x.pmt_area, x.pmt_coordinates, x.acceptance, x.quantum_eff, x.module_id)
 end
 
-get_pmt_count(::POM) = 16
-get_pmt_count(::Type{<:POM}) = 16
+NeutrinoTelescopeBase.get_pmt_count(::POM) = 16
+NeutrinoTelescopeBase.get_pmt_count(::Type{<:POM}) = 16
 
 StructTypes.StructType(::Type{<:POM}) = StructTypes.CustomStruct()
 StructTypes.lower(x::POM) = (x.shape.position, x.module_id)

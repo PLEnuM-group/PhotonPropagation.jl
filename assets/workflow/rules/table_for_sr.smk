@@ -3,9 +3,12 @@ SCRIPT_PATH = "/home/saturn/capn/capn100h/julia_dev/PhotonPropagation/scripts/ph
 JULIA_PATH =  "/home/hpc/capn/capn100h/.juliaup/bin/julia"
 JULIA_DEPOT = "/home/saturn/capn/capn100h/julia_depot"
 
+# 1E3: 2*60 + 30
+# 1E4: 3*60 + 42
+
 def calc_niterations(wildcards):
     energy = float(wildcards.energy)
-    return math.floor(3600 / ((((math.sqrt(energy) / 612.7095903795534)** 27.847460407675435) + (energy * 0.00012060236341197549)) + 9.095369098636635))
+    return math.floor(3600 / ((energy ** 0.17569523648639102) + (energy * 0.00010700781464012448)))
 
 
 rule run_photon_simulation:
