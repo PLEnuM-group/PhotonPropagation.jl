@@ -863,8 +863,10 @@ function FastLightsabreMuonEmitter(particle::Particle, medium::MediumProperties,
     end
 
     log_energy = log10(particle.energy)
-    lightyield = 10^Polynomial(coeffs)(log_energy) * particle.length
-    
+    ly_stoch = 10^Polynomial(coeffs)(log_energy) * particle.length    
+    ly_bare = total_lightyield(particle, medium, spectrum)
+
+    lightyield = ly_bare + ly_stoch
     n_photons = pois_rand(lightyield)
 
     return CherenkovTrackEmitter(particle.position, particle.direction, particle.time, particle.length, n_photons)

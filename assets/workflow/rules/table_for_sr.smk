@@ -13,7 +13,7 @@ def calc_niterations(wildcards):
 
 rule run_photon_simulation:
     output:
-        r"results/{mode}/output_dist{dist}_energy{energy}_ix{ix}.arrow"
+        r"results/{mode}/{om_type}output_dist{dist}_energy{energy}_ix{ix}.arrow"
     resources:
         slurm_extra="'--gres=gpu:a40:1'",
         clusters="alex",
@@ -22,4 +22,25 @@ rule run_photon_simulation:
     params:
         n_iterations=calc_niterations
     shell:
-        "JULIA_DEPOT_PATH={JULIA_DEPOT} julia {SCRIPT_PATH} --outfile {output} --nsims {params.n_iterations} --energy {wildcards.energy} --dist {wildcards.dist} --mode {wildcards.mode}"
+        "JULIA_DEPOT_PATH={JULIA_DEPOT} julia {SCRIPT_PATH} --outfile {output} --nsims {params.n_iterations} --energy {wildcards.energy} --dist {wildcards.dist} --mode {wildcards.mode} --om_type {wildcards.om_type}"
+
+
+def choose_nit(wildcards):
+    if wildcards.mode == "lightsabre":
+        return 2000
+    else:
+        return 200
+
+
+rule run_photon_simulation_randomized:
+    output:
+        r"results/{mode}/{om_type}/output_randomized_ix{ix}.arrow"
+    resources:
+        slurm_extra="'--gres=gpu:a40:1'",
+        clusters="alex",
+        partition="a40",
+        time="02:00:00"
+    params:
+        n_iterations=choose_nit
+    shell:
+        "JULIA_DEPOT_PATH={JULIA_DEPOT} julia {SCRIPT_PATH} --outfile {output} --nsims {params.n_iterations} --randomize --mode {wildcards.mode} --om_type {wildcards.om_type}"

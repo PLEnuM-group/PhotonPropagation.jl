@@ -2,7 +2,7 @@ export POMAcceptance, POM
 export POMRelativeAcceptance
 export get_pom_pmt_group
 export make_pom_pmt_coordinates
-export POMQuantumEff
+
 export apply_qe
 
 using HDF5
@@ -12,20 +12,6 @@ using CSV
 using MultivariateStats
 using StructTypes
 using Distributions
-
-abstract type QuantumEff end
- 
-struct POMQuantumEff{I} <: QuantumEff
-    rel_acceptance::I
-end
-
-
-function POMQuantumEff(fname::String)
-    df = DataFrame(CSV.File(fname))
-    interp = linear_interpolation(df[:, :wavelength], df[:, :rel_acceptance], extrapolation_bc=0.)
-    return POMQuantumEff(interp)
-end
-
 
 struct POMAcceptance{I} <: PMTAcceptance
     sigma_1::Float64
@@ -104,7 +90,7 @@ function POM(position::SVector{3, T}, module_id::Integer, acceptance_type::Type{
         error("Unknown acceptance type: $acceptance_type")
     end
 
-    qe = POMQuantumEff(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv"),)
+    qe = InterpQuantumEff(joinpath(PROJECT_ROOT, "assets/PMTAcc.csv"), true)
 
     pom = POM(shape, pmt_area, make_pom_pmt_coordinates(Float64), acceptance, qe, UInt16(module_id))
     return pom

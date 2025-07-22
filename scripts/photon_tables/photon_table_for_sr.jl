@@ -10,6 +10,7 @@ using StatsBase
 using Arrow
 using ArgParse
 using Logging
+using NeutrinoTelescopeBase
 
 logger = ConsoleLogger()
 global_logger(logger)
@@ -53,7 +54,7 @@ function make_particle(mode, pos, dir, energy, medium, spectrum)
 
         source = CherenkovTrackEmitter(particle, medium, spectrum)    
     elseif mode == "lightsabre"
-        length = 400f0
+        length = 1000f0
         ppos = pos .- length/2 .* dir
         
         particle = Particle(
@@ -106,8 +107,19 @@ function main(args)
     end
     @show seed
 
+    if !args["randomize"] && (isnothing(args["energy"]) || isnothing(args["distance"]))
+        error("Need to provide energy and distance when not randomizing.")
+    end
+
+    target = nothing
+    if args["om_type"] == "POM"
+        target = POM(SA_F32[0, 0, 0], UInt16(1))
+    else
+        target = make_generic_multipmt_om(SA_F32[0, 0, 0], args["om_radius"], 1)
+    end
+
     medium = CascadiaMediumProperties(g, pwf, abs_scale, sca_scale)
-    target = POM(SA_F32[0, 0, 0], UInt16(1))
+    
     wl_range = (300.0f0, 800.0f0)
     spectrum = make_cherenkov_spectrum(wl_range, medium)
 
@@ -117,19 +129,29 @@ function main(args)
         @info "Starting simulation $isim"
 
         dir = Float32.(rand_vec())
-        pos = Float32(args["dist"]) * Float32.(rand_vec())
+
+        if !args["randomize"]
+            dist = dist
+            energy = args["energy"]
+        else
+            dist = 10 .^rand(Uniform(1, log10(300)))
+            energy = 10 .^rand(Uniform(2, 6))
+        end
+
+        pos = Float32(dist) * Float32.(rand_vec())
 
         if mode == :bare_infinite_track || mode == :lightsabre_muon
             r = dir[2] != 0 ? dir[1] / dir[2] : zero(dir[1])
-            pos_rot = SA_F32[args["dist"]/sqrt(1 + r^2), -r*args["dist"]/sqrt(1 + r^2), 0]
+            pos_rot = SA_F32[dist/sqrt(1 + r^2), -r*dist/sqrt(1 + r^2), 0]
             R = rand(RotMatrix3)
 
             pos = R * pos_rot
             dir = R * dir
         end
         
+        source = make_particle(args["mode"], pos, dir, energy, medium, spectrum)
 
-        source = make_particle(args["mode"], pos, dir, args["energy"], medium, spectrum)
+        @info "Energy: $energy \t Photons: $(source.photons)"
 
         setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 
@@ -181,10 +203,9 @@ function main(args)
         hits = make_hits_from_photons(photons, setup, RotMatrix3(I))
         calc_pe_weight!(hits, [target])
 
-        
-
+      
         ws = Weights(hits.total_weight)
-        per_pmt_counts = counts(Int64.(hits.pmt_id), 1:16, ws)
+        per_pmt_counts = counts(Int64.(hits.pmt_id), 1:get_pmt_count(target), ws)
 
 
         pos_theta, pos_phi = cart_to_sph(pos ./ norm(pos))
@@ -199,15 +220,15 @@ function main(args)
             dir_t=[dir_theta],
             dir_phi=[dir_phi],
             hits=[per_pmt_counts],
-            energy=[args["energy"]],
-            dist=[args["dist"]]))
+            energy=[energy],
+            dist=[dist]))
     end
 
     close(writer)
 end
 
 mode_choices = ["em_shower", "hadronic_shower", "bare_infinite_track", "pointlike_cherenkov", "lightsabre"]
-
+om_choices = ["POM", "generic_multipmt"]
 s = ArgParseSettings()
 @add_arg_table s begin
     "--outfile", "-o"
@@ -221,11 +242,14 @@ s = ArgParseSettings()
     "--energy", "-e"
         help = "Energy of the particle"
         arg_type = Float64
-        required = true
+        required = false
     "--dist", "-d"
         help = "Distance from the module"
         arg_type = Float64
-        required = true
+        required = false
+    "--randomize"
+        help ="Randomize distance and energy"
+        action = :store_true
     "--seed", "-s"
         help = "Seed for the simulation"
         arg_type = Int64
@@ -234,6 +258,19 @@ s = ArgParseSettings()
         range_tester = (x -> x in mode_choices)
         arg_type = String
         required = true
+    "--om_type"
+        default = "generic_multipmt"
+         range_tester = (x -> x in om_choices)
+        arg_type = String
+        help = "OM Type; must be one of " * join(om_choices, ", ", " or ")
+    "--n_pmt"
+        default = 20
+        arg_type = Int64
+        help = "Number of PMTs on module (for generic_multipmt)"
+    "--om_radius"
+        default = 0.25f0
+        arg_type = Float32
+        help = "OM Radius (for generic_multipmt)"
 end
 
 args = parse_args(s)

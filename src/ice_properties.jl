@@ -123,10 +123,10 @@ function _ice_group_refractive_index(wavelength)
     return oftype(wavelength, np * (1 + 0.227106 − 0.954648 * wavelength + 1.42568 * wavelength^2 − 0.711832 * wavelength^3))
 end
 
-CherenkovMediumBase.phase_refractive_index(wavelength, ::HomogenousIceProperties) = _ice_phase_refractive_index(wavelength)
-CherenkovMediumBase.group_refractive_index(wavelength, ::HomogenousIceProperties) = _ice_group_refractive_index(wavelength)
+CherenkovMediumBase.phase_refractive_index(::HomogenousIceProperties, wavelength) = _ice_phase_refractive_index(wavelength)
+CherenkovMediumBase.group_refractive_index(::HomogenousIceProperties, wavelength) = _ice_group_refractive_index(wavelength)
 
-function CherenkovMediumBase.group_velocity(wavelength::T, medium::HomogenousIceProperties) where {T<:Real}
+function CherenkovMediumBase.group_velocity(medium::HomogenousIceProperties, wavelength::T) where {T<:Real}
     global c_vac_m_ns
     return T(c_vac_m_ns) / group_refractive_index(wavelength, medium)
 end
@@ -152,7 +152,7 @@ function _absorption_coeff_spice(wavelength, A_SPICE, B_SPICE, D_SPICE, E_SPICE,
     return oftype(wavelength, adust + a_temp)
 end
 
-function CherenkovMediumBase.absorption_length(wavelength, medium::HomogenousIceProperties)
+function CherenkovMediumBase.absorption_length(medium::HomogenousIceProperties, wavelength)
     abs_coeff = _absorption_coeff_spice(
         wavelength, A_SPICE(medium), B_SPICE(medium), D_SPICE(medium), E_SPICE(medium),
         a_dust_400(medium), kappa_abs_dust(medium), deltaTSPICE(medium))
@@ -168,7 +168,7 @@ function _eff_sca_coeff_dust(wavelength, b_dust_400, alpha_sca_dust)
     return oftype(wavelength, b_dust_400 * (wavelength/400)^(-alpha_sca_dust))
 end
 
-function CherenkovMediumBase.scattering_length(wavelength::Real, medium::HomogenousIceProperties)
+function CherenkovMediumBase.scattering_length(medium::HomogenousIceProperties, wavelength::Real, )
     eff_coeff = _eff_sca_coeff_dust(wavelength, b_dust_400(medium), alpha_sca_dust(medium))
     sca_coeff = eff_coeff / ( 1 - mean_scattering_angle(medium))
     return oftype(wavelength, 1/sca_coeff * medium.sca_scale)

@@ -4,11 +4,13 @@ using PhysicsTools
 using CairoMakie
 using CSV
 using DataFrames
+using NeutrinoTelescopeBase
+using LinearAlgebra
+using StatsBase
 buffer_cpu, buffer_gpu = make_hit_buffers();
 
 
-mean_sca_angle = 0.95f0
-medium = CascadiaMediumProperties(mean_sca_angle, 1f0, 1.0f0)
+medium = CascadiaMediumProperties()
 
 # We first define a `particle` and then convert into a light source
 energy = Float32(1E5)
@@ -27,7 +29,7 @@ source = ExtendedCherenkovEmitter(p, medium, spectrum)
 
 tpos = SA_F32[0f0, 30f0, 5f0]
 module_id = 1
-target = POM(tpos, module_id)
+target = make_generic_multipmt_om(tpos, 0.25f0, 1)
 
 
 seed = 1
@@ -35,11 +37,25 @@ setup = PhotonPropSetup([source], [target], medium, spectrum, seed)
 # Run photon propagation
 @time photons = propagate_photons(setup, buffer_cpu, buffer_gpu, copy_output=true)
   
+
+sum(photons[:, :total_weight])
+
 hits = make_hits_from_photons(photons, setup)
-sum(calc_pe_weight!(hits, setup)[:, :total_weight])
+sum(calc_pe_weight!(hits, setup)[:, :total_weight]) 
+
+
+hits
+
+hits
+
+ws = Weights(hits.total_weight)
+per_pmt_counts = counts(Int64.(hits.pmt_id), 1:get_pmt_count(target), ws)
+
+
+
 
 # Use oversampling
-setup = PhotonPropSetup([source], [target], medium, spectrum, seed, photon_scaling=5.)
+setup = PhotonPropSetup([source], [target], medium, spectrum, seed, photon_scaling=1.)
 # Run photon propagation
 setup
 
@@ -51,6 +67,10 @@ hits_ov = make_hits_from_photons(photons_ov, setup)
 sum(calc_pe_weight!(hits_ov, setup)[:, :total_weight])
 
 
+proj_areas = dot.(Ref([0, 1, 0]), get_pmt_positions(target))
+
+
+sum(proj_areas[proj_areas .> 0])
 
 # Target Shape
 module_position = SA[0., 0., 10.]

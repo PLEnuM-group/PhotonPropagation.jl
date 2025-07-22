@@ -12,6 +12,7 @@ using NeutrinoTelescopeBase
 
 export apply_wl_acceptance
 export check_pmt_hit
+export InterpQuantumEff
 
 
 
@@ -89,31 +90,36 @@ function check_pmt_hit(
     target::SphericalMultiPMTTarget,
     orientation::Rotation{3,<:Real}) where {T<:SVector{3,<:Real}}
 
-    # For POM, xsec is always the same (spherical module)
-    xsec = cross_section(target, first(hit_directions))
-
-    total_hit_prob = get_pmt_count(target) * target.acceptance.pmt_eff_area / xsec
+    # For SphericalMultiPMTTarget, xsec is always the same
+    xsec = cross_section(target.shape, first(hit_directions))
 
     pmt_positions = get_pmt_positions(target, orientation)
     pmt_hit_ids = zeros(Int, length(hit_positions))
     rel_pmt_weights = zeros(Float64, get_pmt_count(target))
 
-    for (hit_ix, hd) in enumerate(hit_directions)
+
+    cos_thetas = zeros(size(pmt_positions))
+
+    for (hit_ix, (hp, hd)) in enumerate(zip(hit_positions, hit_directions))
+        cos_thetas .= dot.(Ref(hd), get_pmt_positions(target))
+        projected_areas = sum(cos_thetas[cos_thetas .> 0]) * target.pmt_area
+
+        total_hit_prob = projected_areas / xsec
         if rand() > total_hit_prob
             continue
         end
 
         for (pmt_ix, pmt_pos) in enumerate(pmt_positions)
-            rel_costheta = -dot(hd, pmt_pos) 
+            rel_hit_pos = (hp .- target.shape.position) ./ target.shape.radius
+            rel_costheta = -dot(rel_hit_pos, pmt_pos) 
             rel_pmt_weights[pmt_ix] = rel_costheta
         end
 
         w = ProbabilityWeights(rel_pmt_weights)
         pmt_hit_ids[hit_ix] = sample(1:get_pmt_count(target), w)
 
-
     end
-
+    return pmt_hit_ids
 
 
     #=
@@ -145,6 +151,15 @@ apply_wl_acceptance(
     t::PhotonTarget,
     ::Rotation{3,<:Real}) = error("not implemented for type $(typeof(t))")
 
+apply_wl_acceptance(
+    hit_positions::AbstractVector,
+    ::AbstractVector,
+    ::AbstractVector,
+    t::SphericalMultiPMTTarget,
+    ::Rotation{3,<:Real}) =  ones(Bool, size(hit_positions))
+
+
+
 apply_qe(::AbstractVector, t::PhotonTarget) = error("not implemented for type $(typeof(t))")
     
 abstract type PMTAcceptance end
@@ -154,8 +169,33 @@ struct SimpleAcceptance{T<:Real} <: PMTAcceptance
     pmt_eff_area::T
 end
 
+abstract type QuantumEff end
+ 
+struct InterpQuantumEff{I} <: QuantumEff
+    qe::I
+end
+
+function InterpQuantumEff(fname::String, relative=false)
+    df = DataFrame(CSV.File(fname))
+    y = nothing
+    if relative
+        y = df[:, :rel_acceptance]
+    else
+        y = df[:, :QE]./100
+    end
+
+    interp = linear_interpolation(df[:, :wavelength], y, extrapolation_bc=0.)
+    return InterpQuantumEff(interp)
+end
+
+
+(qe::InterpQuantumEff)(x) = qe.qe(x)
+
+apply_qe(wls::AbstractVector, t::SphericalMultiPMTTarget) = t.wl_acceptance.(wls)
+
+
 include("pom.jl")
 include("dom.jl")
-
+include("generic_multipmt.jl")
 
 end
