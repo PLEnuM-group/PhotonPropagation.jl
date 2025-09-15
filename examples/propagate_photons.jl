@@ -251,21 +251,3 @@ hist!(ax, hits_biased[:, :time], weights=hits_biased[:, :total_weight], bins=bin
 fig
 
 
-
-
-
-
-# Save output
-#=
-hits = make_hits_from_photons(photons, setup)
-event_record = Dict(:hits=>hits, :sources=>[source], :event_id=>uuid4())
-
-using HDF5
-
-fid = h5open("test.hd5", "w")
-
-fid["test"] = hits[:, [:time]]
-
-
-save_event("test.hd5", event_record)
-=#
