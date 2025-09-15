@@ -911,18 +911,25 @@ function run_photon_prop_no_local_cache!(
         targets = CuVector(targets)
     end
 
+    function get_launch_config(source)
+        kernel = @cuda always_inline=true launch = false cuda_propagate_photons!(
+            photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
+            source, spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
 
-    kernel = @cuda always_inline=true launch = false cuda_propagate_photons!(
-        photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
-        sources[1], spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
+        blocks, threads = CUDA.launch_configuration(kernel.fun)
+        return blocks, threads
+    end
 
-    blocks, threads = CUDA.launch_configuration(kernel.fun)
-    # @show blocks, threads
-    # @show CUDA.registers(kernel)
+    blocks, threads = get_launch_config(sources[1])
+    last_source_type = typeof(sources[1])
 
     # Can assign photons to sources by keeping track of stack_idx for each source
     for source in sources
-    
+
+        if typeof(source) != last_source_type
+            blocks, threads =  get_launch_config(source)
+            last_source_type = typeof(source)
+        end
         CUDA.@sync @cuda always_inline=true threads=threads blocks=blocks cuda_propagate_photons!(
                 photon_hits_gpu, stack_idx, n_ph_sim, err_code, seed,
                 source, spectrum, targets, medium, Int32(n_steps), Float32(photon_scaling))
