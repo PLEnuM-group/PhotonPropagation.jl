@@ -46,8 +46,8 @@ position = SA_F32[0., 0., 0.]
 source = PointlikeIsotropicEmitter(position, 0f0, 100000)
 
 # Setup medium
-mean_sca_angle = 0.99f0
-medium = make_cascadia_medium_properties(mean_sca_angle)
+mean_sca_angle = 0.95f0
+medium = CascadiaMediumProperties(mean_sca_angle)
 
 # Setup spectrum
 spectrum = Monochromatic(450f0)
