@@ -101,7 +101,7 @@ function check_pmt_hit(
     cos_thetas = zeros(size(pmt_positions))
 
     for (hit_ix, (hp, hd)) in enumerate(zip(hit_positions, hit_directions))
-        cos_thetas .= dot.(Ref(hd), get_pmt_positions(target))
+        cos_thetas .= dot.(Ref(hd), pmt_positions)
         projected_areas = sum(cos_thetas[cos_thetas .> 0]) * target.pmt_area
 
         total_hit_prob = projected_areas / xsec
