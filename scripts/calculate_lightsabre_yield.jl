@@ -42,7 +42,7 @@ for le in log_energies
         end
         push!(lys, ly_secondaries)
     end
-    ly_secondaries = mean(lys) / tlen
+    ly_secondaries = mean(lys) / p.length
     push!(data, (log_energy=le, mean_ly=ly_secondaries))
 end
 
