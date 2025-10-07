@@ -33,7 +33,7 @@ tlen = 10000.
 prop = ProposalInterface.make_propagator(PMuMinus)
 for le in log_energies
     particle = Particle(SA_F64[0, 0, 0], SA_F64[0, 0, 1], 0., 10^le, tlen, PMuMinus)
-    for i in 1:20
+    for i in 1:100
         p, secondaries = propagate_muon(particle, propagator=prop)
         if length(secondaries) > 0
             ly_secondaries = sum(total_lightyield.(secondaries, Ref(medium), Ref(spectrum)))
@@ -42,12 +42,24 @@ for le in log_energies
         end
         push!(lys, ly_secondaries)
     end
-    ly_secondaries = mean(lys) / p.length
-    push!(data, (log_energy=le, mean_ly=ly_secondaries))
+    ly_secondaries_mean = mean(lys) / p.length
+    ly_secondaries_median = median(lys) / p.length
+
+    ly_secondaries_mean_old = mean(lys) / tlen
+    ly_secondaries_median_old = median(lys) / tlen
+
+    push!(data, (log_energy=le, mean_ly=ly_secondaries_mean, median_ly=ly_secondaries_median,
+    mean_ly_old=ly_secondaries_mean_old, median_ly_old=ly_secondaries_median_old))
 end
 
 data = DataFrame(data)
 fig, ax, lin = lines(data[:, :log_energy], log10.(data[:, :mean_ly]))
+lines!(ax, data[:, :log_energy], log10.(data[:, :median_ly]), color=:red)
+lines!(ax, data[:, :log_energy], log10.(data[:, :mean_ly_old]), color=:green)
+lines!(ax, data[:, :log_energy], log10.(data[:, :median_ly_old]), color=:orange)
+fig
+
+
 coeffs = poly_fit(data[:, :log_energy], log10.(data[:, :mean_ly]), 5)
 lines!(ax, log_energies, Polynomial(coeffs).(log_energies))
 fig
@@ -59,4 +71,4 @@ lines!(ax, log_energies, 10 .^Polynomial(coeffs).(log_energies))
 fig
 
 
-coeffs
+

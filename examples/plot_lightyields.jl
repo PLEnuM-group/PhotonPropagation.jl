@@ -14,6 +14,20 @@ using LinearAlgebra
 using Unitful
 using PhysicalConstants.CODATA2018
 
+medium = CascadiaMediumProperties()
+
+for e in 10 .^ (2:0.5:7)
+    p = Particle(SA[0., 0., 0.], SA[0., 0., 1.], 0., e, 0., PEMinus)
+    em = FastLightsabreMuonEmitter(p, medium, make_cherenkov_spectrum((300., 800.), medium))
+    println("E: $(e), photons: $(em.photons), photons/m: $(em.photons / p.length)")
+end
+
+
+
+
+
+
+
 function plot_cherenkov_spectrum(wl_min, wl_max, medium)
     wavelength = wl_min:1.:wl_max
     norm = frank_tamm_norm((wl_min, wl_max), wl -> phase_refractive_index(wl, medium))
