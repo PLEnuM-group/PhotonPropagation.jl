@@ -76,7 +76,7 @@ function make_particle(mode, pos, dir, energy, medium, spectrum)
             Float32(energy),
             0.0f0,
             PEMinus)
-        source = PointlikeChernekovEmitter(particle, medium, spectrum)
+        source = PointlikeCherenkovEmitter(particle, medium, spectrum)
     else
         error("unknown mode $mode")
     end
@@ -107,7 +107,7 @@ function main(args)
     end
     @show seed
 
-    if !args["randomize"] && (isnothing(args["energy"]) || isnothing(args["distance"]))
+    if !args["randomize"] && (isnothing(args["energy"]) || isnothing(args["dist"]))
         error("Need to provide energy and distance when not randomizing.")
     end
 
@@ -131,7 +131,7 @@ function main(args)
         dir = Float32.(rand_vec())
 
         if !args["randomize"]
-            dist = dist
+            dist = args["dist"]
             energy = args["energy"]
         else
             dist = 10 .^rand(Uniform(1, log10(300)))
