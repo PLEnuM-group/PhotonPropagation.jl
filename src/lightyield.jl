@@ -12,7 +12,7 @@ export rel_additional_track_length
 export AngularEmissionProfile
 export PhotonSource, PointlikeIsotropicEmitter, ExtendedCherenkovEmitter, ExtendedCherenkovEmitterNoSmear, ExtendedCherenkovEmitterCustomSmear, CherenkovEmitter, PointlikeCherenkovEmitter
 export AxiconeEmitter, PencilEmitter, PointlikeTimeRangeEmitter, CherenkovTrackEmitter, CollimatedIsotropicEmitter
-export FastLightsabreMuonEmitter
+export LightsabreMuonEmitter, FastLightsabreMuonEmitter
 export cherenkov_ang_dist, cherenkov_ang_dist_int
 export split_source, rescale_source
 
@@ -31,6 +31,7 @@ using Polynomials
 using CherenkovMediumBase
 using ..Spectral
 using ..Medium
+using ProposalInterface
 
 
 
